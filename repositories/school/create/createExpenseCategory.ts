@@ -1,46 +1,33 @@
 import { query } from "../../../lib/db";
 
-type school ={
+type expense_category ={
     school_id :string
-    school_name :string,
-    school_type :string,
-    school_address :string,
-    school_contact :string,
-    school_email :string,
+    expense_name :string,
+    
 }
 
-export async function createSchool(schools:school[]){
+export async function createExpenseCategory(expense_categories:expense_category[]){
     const values:unknown[] =[]
     const placeholders = 
-    schools.map((school,index)=>{
+    expense_categories.map((expense_category,index)=>{
         const offset = index*6;
 
         values.push(
-            school.school_id,
-            school.school_name,
-            school.school_type,
-            school.school_address,
-            school.school_address,
-            school.school_email
+            expense_category.school_id,
+            expense_category.expense_name
         );
         return `
         (
-        $${offset+1},$${offset+2},
-        $${offset+3},$${offset+4},
-        $${offset+5},$${offset+6}
+        $${offset+1},$${offset+2}
         )
         `;
     });
 
     const result = await query(
         `
-        INSERT INTO schools(
+        INSERT INTO expense_categories(
          school_id,
-         school_name,
-         school_type,
-         school_address,
-         school_contact,
-         school_email
+         expense_name
         )
         VALUES${placeholders.join(", ")}
         RETURNING*

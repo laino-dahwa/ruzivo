@@ -1,46 +1,33 @@
 import { query } from "../../../lib/db";
 
-type school ={
+type gender ={
     school_id :string
-    school_name :string,
-    school_type :string,
-    school_address :string,
-    school_contact :string,
-    school_email :string,
+    gender_name :string,
 }
 
-export async function createSchool(schools:school[]){
+export async function createGender(genders:gender[]){
     const values:unknown[] =[]
     const placeholders = 
-    schools.map((school,index)=>{
+    genders.map((gender,index)=>{
         const offset = index*6;
 
         values.push(
-            school.school_id,
-            school.school_name,
-            school.school_type,
-            school.school_address,
-            school.school_address,
-            school.school_email
+            gender.school_id,
+            gender.gender_name
         );
         return `
         (
-        $${offset+1},$${offset+2},
-        $${offset+3},$${offset+4},
-        $${offset+5},$${offset+6}
+        $${offset+1},$${offset+2}
+        
         )
         `;
     });
 
     const result = await query(
         `
-        INSERT INTO schools(
+        INSERT INTO genders(
          school_id,
-         school_name,
-         school_type,
-         school_address,
-         school_contact,
-         school_email
+         gender_name
         )
         VALUES${placeholders.join(", ")}
         RETURNING*
