@@ -29,6 +29,6 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
     "**/*.mts"
-, "app/api/schools/[school_id]/route.js", "repositories/school/read/get_school.js", "app/api/schools/[school_id]/academic_years/route.js"  ],
+, "app/api/schools/[school_id]/route.ts", "repositories/school/read/getSchool.ts", "app/api/schools/[school_id]/academic_years/route.ts"  ],
   "exclude": ["node_modules"]
 }

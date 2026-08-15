@@ -1,11 +1,11 @@
 import { query } from "../../../lib/db";
 
-export async function getschool(request) {
+export async function getPaymentPeriods(school_id:string) {
     const result = await query(`
         SELECT *
-        FROM schools
+        FROM payment_periods
         WHERE school_id =$1`,
-        [request]
+        [school_id]
     );
 
     return result.rows;
