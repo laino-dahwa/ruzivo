@@ -10,7 +10,7 @@ export async function createClassCategory(class_categories:class_category[]){
     const values:unknown[] =[]
     const placeholders = 
     class_categories.map((class_category,index)=>{
-        const offset = index*6;
+        const offset = index*2;
 
         values.push(
             class_category.school_id,

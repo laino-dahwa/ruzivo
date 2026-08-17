@@ -12,7 +12,7 @@ export async function createExpense(expenses:expense[]){
     const values:unknown[] =[]
     const placeholders = 
     expenses.map((expense,index)=>{
-        const offset = index*6;
+        const offset = index*4;
 
         values.push(
             expense.expense_category_id,

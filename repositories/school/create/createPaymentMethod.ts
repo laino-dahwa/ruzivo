@@ -9,7 +9,7 @@ export async function createPaymentMethod(payment_methods:payment_method[]){
     const values:unknown[] =[]
     const placeholders = 
     payment_methods.map((payment_method,index)=>{
-        const offset = index*6;
+        const offset = index*2;
 
         values.push(
             payment_method.school_id,
@@ -27,7 +27,7 @@ export async function createPaymentMethod(payment_methods:payment_method[]){
         `
         INSERT INTO payment_methods(
          school_id,
-         method_name,
+         method_name
         )
         VALUES${placeholders.join(", ")}
         RETURNING*

@@ -10,7 +10,7 @@ export async function createPaymentPeriod(payment_periods:payment_period[]){
     const values:unknown[] =[]
     const placeholders = 
     payment_periods.map((payment_period,index)=>{
-        const offset = index*6;
+        const offset = index*2;
 
         values.push(
             payment_period.school_id,

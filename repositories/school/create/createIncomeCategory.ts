@@ -11,7 +11,7 @@ export async function createIncomeCategory(income_categories:income_category[]){
     const values:unknown[] =[]
     const placeholders = 
     income_categories.map((income_category,index)=>{
-        const offset = index*6;
+        const offset = index*3;
 
         values.push(
             income_category.school_id,
@@ -33,7 +33,7 @@ export async function createIncomeCategory(income_categories:income_category[]){
         INSERT INTO income_categories(
          school_id,
          income_name,
-         school_limit
+         income_limit
        
         )
         VALUES${placeholders.join(", ")}

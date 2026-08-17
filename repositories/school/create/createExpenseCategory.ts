@@ -10,7 +10,7 @@ export async function createExpenseCategory(expense_categories:expense_category[
     const values:unknown[] =[]
     const placeholders = 
     expense_categories.map((expense_category,index)=>{
-        const offset = index*6;
+        const offset = index*2;
 
         values.push(
             expense_category.school_id,

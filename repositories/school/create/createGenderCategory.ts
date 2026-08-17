@@ -9,7 +9,7 @@ export async function createGender(genders:gender[]){
     const values:unknown[] =[]
     const placeholders = 
     genders.map((gender,index)=>{
-        const offset = index*6;
+        const offset = index*2;
 
         values.push(
             gender.school_id,
