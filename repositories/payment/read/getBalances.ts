@@ -11,7 +11,7 @@ export async function getBalances(learner_id:string|null,class_name:string|null,
             COALESCE(SUM(p.amount), 0) AS paid,
             ic.income_limit - COALESCE(SUM(p.amount), 0) AS balance,
             pp.period_name,
-            ay.name
+            ay.academic_year_name
         FROM learners l 
         JOIN charges c
         ON l.learner_id = c.learner_id
@@ -38,7 +38,7 @@ export async function getBalances(learner_id:string|null,class_name:string|null,
          AND
         ($3::text IS NULL OR g.gender_name= $3::text)
          AND
-        ($4::text IS NULL OR ay.name= $4::text)
+        ($4::text IS NULL OR ay.academic_year_name= $4::text)
         AND
         ($5::text IS NULL OR ic.income_name= $5::text)
         AND
