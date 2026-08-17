@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import {getschool} from "../../../../repositories/school/read/getSchool"
 import {createSchool} from "../../../../repositories/school/create/createSchool"
+import {updateSchool} from "../../../../repositories/school/update/updateSchool"
 
 
 export const runtime = "nodejs";
@@ -55,4 +56,47 @@ export async function POST(request:Request){
         )
     }
 }
+
+
+
+export async function PATCH(request:Request){
+    try{
+        const body = await request.json()
+       
+         if(!Array.isArray(body)){
+            return NextResponse.json(
+                {
+                    error:"Request body must be an array of schools"
+                },
+                {
+                    status: 400
+                }
+            )
+        }
+       
+     
+        const schools = await updateSchool(body)
+
+        return NextResponse.json(
+            schools,
+            {
+                status:201
+            }
+        )
+    }catch(error){
+        console.error("School Update Failed :",error)
+
+        return NextResponse.json(
+            {
+                 error:"School Update Failure"
+            },
+            {
+                status:500
+            }
+           
+        )
+    }
+}
+
+
 

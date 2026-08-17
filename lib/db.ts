@@ -1,8 +1,14 @@
-import { Pool } from "pg";
+import { Pool,PoolClient,QueryConfig } from "pg";
 
+
+declare global {
+    var __postgresPoolPromise :
+    Promise<Pool>|null|undefined;
+    var __databaseInitialized:Promise<void>|undefined
+}
 const globalForPostgres = globalThis;
 
-function quoteIdentifier(identifier) {
+function quoteIdentifier(identifier:string) {
     return `"${identifier.replace(/"/g, '""')}"`;
 }
 
@@ -16,6 +22,10 @@ async function createDatabaseIfNotExists() {
     });
 
     const databaseName = process.env.PGDATABASE;
+
+    if (!databaseName){
+        throw new Error("PGDATABASE is not defined")
+    }
 
     try {
         const result = await adminPool.query(
@@ -64,10 +74,34 @@ export async function getPool() {
     return globalForPostgres.__postgresPoolPromise;
 }
 
-export async function query(text, params = []) {
+export async function query(text:string, params: QueryConfig["values"]= []) {
     const pool = await getPool();
 
     return pool.query(text, params);
+}
+
+
+export async function transaction<T>(
+    callback: (client: PoolClient)=>
+    Promise<T>
+    ):Promise<T>{
+  const pool  = await getPool()
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const result = await callback(client);
+
+    await client.query("COMMIT");
+
+    return result;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function initializeDatabase() {

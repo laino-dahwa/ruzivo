@@ -48,7 +48,7 @@ export default function Home() {
       
       */}
 
-      
+    {/**  
     const schools = [
       {
         'school_id':'SGH',
@@ -69,6 +69,34 @@ export default function Home() {
         body:JSON.stringify(schools)
       }
     )
+    */} 
+
+    {/** 
+    const response = await fetch(`/api/schools/?school_id=${stuff}`,{
+      method:"DELETE" 
+    });
+    */}
+
+
+    const schools= [
+      {
+          'school_id':'SSV',
+          'school_contact':'0772595267',
+          'school_email':'info@ssvschool.learn'
+        }
+    ]
+
+
+    const response = await fetch(`api/schools/${stuff}`,
+      {
+        method:"PATCH",
+        headers:{
+          "Content-Type":"application/json"
+        },
+        body:JSON.stringify(schools)
+      }
+    )
+
     const data = await response.json()
     console.log(data)
 
