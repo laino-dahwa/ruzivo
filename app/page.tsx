@@ -32,10 +32,10 @@ export default function Home() {
     //const response = await fetch(`/api/schools/${stuff}/payment_periods`)
 
     //Getting learners 
-    //const response = await fetch(`/api/learners?learner_id=${null}&class_name=${"Grade 1"}&gender_name=${"Male"}&academic_year=${"2026"}`);
+    //const response = await fetch(`/api/learners?learner_id=${null}&class_name=${null}&gender_name=${null}&academic_year=${null}`);
 
     //Getting payments 
-    //const response = await fetch(`/api/learners/payments?learner_id=${"SSV99KD8"}&class_name=${null}&gender_name=${null}&academic_year=${null}&income_name=${null}&payment_period=${null}&method_name=${null}`);
+    //const response = await fetch(`/api/learners/payments?learner_id=${null}&class_name=${null}&gender_name=${null}&academic_year=${null}&income_name=${null}&payment_period=${null}&method_name=${null}`);
 
     //Getting owings
     //const response = await fetch(`/api/learners/balances?learner_id=${null}&class_name=${null}&gender_name=${null}&academic_year=${null}&income_name=${null}&payment_period=${null}`);
@@ -283,7 +283,7 @@ export default function Home() {
     school_id: "SSV",
     first_name: "John",
     last_name: "Moyo",
-    gender: "Male",
+    gender_id: 3,
     date_of_birth: "2016-05-12",
     class_category_id: 1,
     academic_year_id: 3
@@ -292,7 +292,7 @@ export default function Home() {
     school_id: "SSV",
     first_name: "Mary",
     last_name: "Dube",
-    gender: "Female",
+    gender_id: 4,
     date_of_birth: "2015-08-21",
     class_category_id: 2,
     academic_year_id: 3
@@ -301,7 +301,7 @@ export default function Home() {
     school_id: "SSV",
     first_name: "Peter",
     last_name: "Ncube",
-    gender: "Male",
+    gender_id: 3,
     date_of_birth: "2016-02-10",
     class_category_id: 3,
     academic_year_id: 3
@@ -310,7 +310,7 @@ export default function Home() {
     school_id: "SSV",
     first_name: "Sarah",
     last_name: "Moyo",
-    gender: "Female",
+    gender_id: 4,
     date_of_birth: "2014-11-05",
     class_category_id: 4,
     academic_year_id: 3
@@ -319,7 +319,7 @@ export default function Home() {
     school_id: "SSV",
     first_name: "David",
     last_name: "Chirwa",
-    gender: "Male",
+    gender_id: 3,
     date_of_birth: "2017-03-18",
     class_category_id: 5,
     academic_year_id: 3
@@ -440,44 +440,18 @@ const charges = [
   },
 ];
 
-const payments = [
-  {
-    school_id: "SSV",
-    learner_id: "SSV34EF7",
-    charge_id: 1,
-    amount: 350.00,
-    paid_at: "2026-01-15 10:30:00+02",
-    payment_method: "Bank",
-    reference: "BANK-001",
-  },
-  {
-    school_id: "SSV",
-    learner_id: "SSV34EF7",
-    charge_id: 2,
-    amount: 200.00,
-    paid_at: "2026-02-10 09:15:00+02",
-    payment_method: "Cash",
-    reference: "CASH-001",
-  },
-  {
-    school_id: "SSV",
-    learner_id: "SSV59G89",
-    charge_id: 4,
-    amount: 300.00,
-    paid_at: "2026-01-20 11:00:00+02",
-    payment_method: "Mobile Money",
-    reference: "MOBILE-001",
-  },
-  {
-    school_id: "SSV",
-    learner_id: "SSV09KD8",
-    charge_id: 6,
-    amount: 500.00,
-    paid_at: "2026-01-25 14:00:00+02",
-    payment_method: "Bank",
-    reference: "BANK-002",
-  },
-];
+const payments =  {   
+    learner_id: "SSV6OQPB",
+    enrolment_id: 1,
+    payment_period_id: 1,
+    academic_year_id: 3,
+    payment_method_id: 1,
+    income_categories: [
+      { income_category_id: 1, amount: 100 },
+      { income_category_id: 2, amount: 50 },
+      { income_category_id: 3, amount: 75 },
+    ],
+  }
 
 const paymentAllocations = [
   {
@@ -539,26 +513,27 @@ const expenses = [
     description: "Classroom repairs",
   },
 ];
-
-    const response = await fetch(`api/learners/`,
+  {/** 
+   const response = await fetch(`api/learners/payments`,
       {
         method:"POST",
         headers:{
           "Content-Type":"application/json"
         },
-        body:JSON.stringify(learners)
-      }
+        body:JSON.stringify(payments)
+     }
     )
+     */}
 
-
+   
 
   
 
-    {/** 
-    const response = await fetch(`/api/schools/?school_id=${stuff}`,{
+  
+    const response = await fetch(`/api/learners/payments/?charge_id=${stuff}`,{
       method:"DELETE" 
     });
-    */}
+    
 
     {/** 
     const schools= [

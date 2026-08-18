@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import {getPayments} from "../../../../repositories/payment/read/getPayments"
+import {createChargesWithPayments} from "../../../../repositories/payment/create/createNewPayment"
+import {deleteCharge} from "../../../../repositories/payment/delete/delete_payment"
 import { URLSearchParams } from "url";
 
 export const runtime = "nodejs";
@@ -45,3 +47,94 @@ export async function GET(request:Request,{ params }:Params) {
     }
   
 }
+
+
+
+
+
+export async function POST(request:Request){
+    try{
+        const body = await request.json()
+
+        if(!body){
+            return NextResponse.json(
+                {
+                    error:"Request body must be an payment object"
+                },
+                {
+                    status: 400
+                }
+            )
+        }
+
+        const schools = await createChargesWithPayments(body)
+
+        return NextResponse.json(
+            schools,
+            {
+                status:201
+            }
+        )
+    }catch(error){
+        console.error("Payment Creation Failed :",error)
+
+        return NextResponse.json(
+            {
+                 error:"Payment Creation Failure"
+            },
+            {
+                status:500
+            }
+           
+        )
+    }
+}
+
+
+
+
+export async function DELETE(request:Request){
+    try{
+        const {searchParams} = new URL(request.url)
+       
+
+        const charge = searchParams.get("charge_id")
+      
+
+        if (!charge){
+            return NextResponse.json(
+                {
+                    error:"Charge_id is required"
+                    
+                },
+                {status:400}
+            )
+        }
+
+        const charge_id = parseInt(charge, 10)
+
+        const deletedSchool = await deleteCharge(charge_id)
+
+        return NextResponse.json(
+            deletedSchool,
+            {
+                status:201
+            }
+        )
+    }catch(error){
+        console.error("Payment Deletion Failed :",error)
+
+        return NextResponse.json(
+            {
+                 error:"Payment Deletion Failure"
+            },
+            {
+                status:500
+            }
+           
+        )
+    }
+}
+
+
+

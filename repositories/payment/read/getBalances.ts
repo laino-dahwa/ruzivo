@@ -48,7 +48,7 @@ export async function getBalances(learner_id:string|null,class_name:string|null,
             ic.income_name,
             ic.income_limit,
             pp.period_name,
-            ay.name
+            ay.academic_year_name
         
         `,
         [learner_id,class_name, gender_name, academic_year,income_name,payment_period]

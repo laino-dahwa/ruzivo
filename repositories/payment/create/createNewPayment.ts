@@ -1,88 +1,119 @@
 import { transaction } from "../../../lib/db";
 
-export type CreateChargeWithPaymentInput = {
+export type CreateChargesWithPaymentsInput = {
   learner_id: string;
   enrolment_id: number;
-  income_category_id: number;
   payment_period_id: number;
   academic_year_id: number;
-
-  amount: number;
   payment_method_id: number;
-  reference: string;
+
+  income_categories: {
+    income_category_id: number;
+    amount: number;
+  }[];
 };
 
-export async function createChargeWithPayment(input: CreateChargeWithPaymentInput) {
-  
-    return transaction(async (client) => {
+export async function createChargesWithPayments(
+  input: CreateChargesWithPaymentsInput
+) {
+  if (input.income_categories.length === 0) {
+    return [];
+  }
 
-    // 1. Create the charge
-    const chargeResult = await client.query(
-      `
-      INSERT INTO charges (
-        learner_id,
-        enrolment_id,
-        income_category_id,
-        payment_period_id,
-        academic_year_id
-      )
-      VALUES ($1, $2, $3, $4, $5)
-      RETURNING charge_id
-      `,
-      [
-        input.learner_id,
-        input.enrolment_id,
-        input.income_category_id,
-        input.payment_period_id,
-        input.academic_year_id,
-      ]
-    );
+  return transaction(async (client) => {
+    const results = [];
 
-    const chargeId = chargeResult.rows[0].charge_id;
+    for (const incomeCategory of input.income_categories) {
+      /*
+       * 1. Create the charge
+       */
+      const chargeResult = await client.query(
+        `
+        INSERT INTO charges (
+          learner_id,
+          enrolment_id,
+          income_category_id,
+          payment_period_id,
+          academic_year_id
+        )
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING
+          charge_id,
+          learner_id,
+          enrolment_id,
+          income_category_id,
+          payment_period_id,
+          academic_year_id,
+          created_at
+        `,
+        [
+          input.learner_id,
+          input.enrolment_id,
+          incomeCategory.income_category_id,
+          input.payment_period_id,
+          input.academic_year_id,
+        ]
+      );
 
+      const charge = chargeResult.rows[0];
 
-    // 2. Create the payment
-    const paymentResult = await client.query(
-      `
-      INSERT INTO payments (
-        amount,
-        payment_method_id,
-        reference
-      )
-      VALUES ($1, $2, $3)
-      RETURNING payment_id
-      `,
-      [
-        input.amount,
-        input.payment_method_id,
-        input.reference,
-      ]
-    );
+      /*
+       * 2. Create the payment
+       */
+      const paymentResult = await client.query(
+        `
+        INSERT INTO payments (
+          amount,
+          payment_method_id
+        )
+        VALUES ($1, $2)
+        RETURNING
+          payment_id,
+          amount,
+          payment_method_id,
+          paid_at
+        `,
+        [
+          incomeCategory.amount,
+          input.payment_method_id,
+        ]
+      );
 
-    const paymentId =
-      paymentResult.rows[0].payment_id;
+      const payment = paymentResult.rows[0];
 
+      /*
+       * 3. Allocate this payment to this charge
+       */
+      const allocationResult = await client.query(
+        `
+        INSERT INTO payment_allocations (
+          payment_id,
+          charge_id
+        )
+        VALUES ($1, $2)
+        RETURNING
+          allocation_id,
+          payment_id,
+          charge_id
+        `,
+        [
+          payment.payment_id,
+          charge.charge_id,
+        ]
+      );
 
-    // 3. Allocate the payment to the charge
-    await client.query(
-      `
-      INSERT INTO payment_allocations (
-        payment_id,
-        charge_id
-      )
-      VALUES ($1, $2)
-      `,
-      [
-        paymentId,
-        chargeId,
-      ]
-    );
+      const allocation = allocationResult.rows[0];
 
+      /*
+       * Keep the three related records together
+       */
+      results.push({
+        charge,
+        payment,
+        allocation,
+      });
+    }
 
-    // 4. Return everything useful
-    return {
-      charge_id: chargeId,
-      payment_id: paymentId,
-    };
+    return results;
   });
 }
