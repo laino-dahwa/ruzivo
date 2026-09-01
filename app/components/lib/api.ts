@@ -79,6 +79,7 @@ export type Learner = {
   gender_name: string;
   curent_year: string;
   class_name: string;
+  enrolment_id: number;
 };
 
 export type CreateLearnerInput = {
@@ -119,6 +120,7 @@ export const learnersApi = {
     })}`),
   create: (learners: CreateLearnerInput[]) => request<(CreateLearnerInput & { learner_id: string })[]>('/api/learners', { method: 'POST', body: JSON.stringify(learners) }),
   update: (learners: UpdateLearnerInput[]) => request<unknown>('/api/learners', { method: 'PATCH', body: JSON.stringify(learners) }),
+  remove: (learnerId: string) => request<unknown>(`/api/learners?learner_id=${encodeURIComponent(learnerId)}`, { method: 'DELETE' }),
 };
 
 // ---------- Payments & balances ----------
@@ -133,6 +135,7 @@ export type Payment = {
   academic_year_name: string;
   amount: string;
   method_name: string;
+  charge_id: number;
 };
 
 export type Balance = {

@@ -3,6 +3,7 @@ import {getLearners} from "../../../repositories/learner/read/getLearners"
 import { URLSearchParams } from "url";
 import { CreateLearnerInput, createLearners } from "@/repositories/learner/create/addLearner";
 import { updateLearners } from "@/repositories/learner/update/updateLearner";
+import { deleteLearner } from "@/repositories/learner/delete/deleteLearner";
 
 export const runtime = "nodejs";
 
@@ -127,4 +128,41 @@ export async function PATCH(request:Request){
 }
 
 
+
+export async function DELETE(request:Request){
+    try{
+        const {searchParams} = new URL(request.url)
+
+        const learner_id = searchParams.get("learner_id")
+
+        if (!learner_id){
+            return NextResponse.json(
+                {
+                    error:"learner_id is required"
+                },
+                {status:400}
+            )
+        }
+
+        const deletedLearner = await deleteLearner(learner_id)
+
+        return NextResponse.json(
+            deletedLearner,
+            {
+                status:201
+            }
+        )
+    }catch(error){
+        console.error("Learner Deletion Failed :",error)
+
+        return NextResponse.json(
+            {
+                 error:"Learner Deletion Failure"
+            },
+            {
+                status:500
+            }
+        )
+    }
+}
 

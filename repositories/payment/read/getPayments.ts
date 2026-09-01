@@ -2,7 +2,7 @@ import { query } from "../../../lib/db";
 
 export async function getPayments(learner_id:string|null,class_name:string|null,gender_name:string|null,academic_year:string|null,income_name:string|null,payment_period:string|null,method_name:string|null) {
     const result = await query(`
-        SELECT l.learner_id,l.first_name,l.last_name,g.gender_name,ca.class_name,ic.income_name,pp.period_name,ay.academic_year_name,p.amount,pm.method_name
+        SELECT l.learner_id,l.first_name,l.last_name,g.gender_name,ca.class_name,ic.income_name,pp.period_name,ay.academic_year_name,p.amount,pm.method_name,c.charge_id
         FROM learners l 
         JOIN charges c
         ON l.learner_id = c.learner_id
