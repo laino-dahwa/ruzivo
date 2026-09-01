@@ -1,0 +1,56 @@
+'use client';
+
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { useState, type ReactNode } from 'react';
+import { CalendarDays, Menu, WalletCards, X } from 'lucide-react';
+import { useCurrentSchoolId } from '../../lib/client/current-school-id';
+import { nav } from './nav-config';
+
+export function AppShell({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+  const [mobileNav, setMobileNav] = useState(false);
+  const { schoolId } = useCurrentSchoolId();
+
+  return (
+    <div className="grain min-h-[100dvh] bg-background md:flex">
+      <aside className={`fixed inset-y-0 left-0 z-40 w-[254px] bg-sidebar px-5 py-6 text-sidebar-foreground transition-transform duration-300 md:relative md:translate-x-0 ${mobileNav ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="flex h-full flex-col">
+          <div className="flex items-center justify-between px-2">
+            <Link href="/" data-testid="link-brand" className="flex items-center gap-3 text-sidebar-foreground">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-sidebar-primary text-sidebar-primary-foreground"><WalletCards size={18} strokeWidth={2.3} /></span>
+              <span><span className="block text-[15px] font-semibold tracking-[-.02em]">Ruzivo</span><span className="block text-[10px] uppercase tracking-[.18em] text-sidebar-foreground/55">Finance office</span></span>
+            </Link>
+            <button type="button" onClick={() => setMobileNav(false)} className="text-sidebar-foreground/60 md:hidden" aria-label="Close navigation" data-testid="button-close-navigation"><X size={19} /></button>
+          </div>
+          <div className="mt-12 px-2 text-[10px] font-semibold uppercase tracking-[.2em] text-sidebar-foreground/45">Workspace</div>
+          <nav className="mt-3 space-y-1" aria-label="Primary navigation">
+            {nav.map(({ href, label, icon: Icon }) => (
+              <Link key={href} href={href} onClick={() => setMobileNav(false)} data-testid={`link-nav-${label.toLowerCase().replaceAll(' ', '-')}`} className={`nav-link flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-medium ${pathname === href || (href !== '/' && pathname.startsWith(href)) ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'text-sidebar-foreground/65 hover:bg-sidebar-accent/70 hover:text-sidebar-accent-foreground'}`}>
+                <Icon size={17} strokeWidth={1.8} /><span>{label}</span>
+              </Link>
+            ))}
+          </nav>
+          <div className="mt-auto rounded-xl border border-sidebar-border bg-sidebar-accent/50 p-4">
+            <div className="flex items-center gap-2 text-sidebar-foreground/60"><CalendarDays size={14} /><span className="text-[11px]">Active school</span></div>
+            <p className="mt-2 truncate text-sm font-medium">{schoolId ?? 'None selected'}</p>
+            <Link href="/school" className="mt-2 block text-[10px] text-sidebar-foreground/60 hover:text-sidebar-foreground">Manage in School setup →</Link>
+          </div>
+        </div>
+      </aside>
+      {mobileNav && <button type="button" aria-label="Close menu overlay" onClick={() => setMobileNav(false)} className="fixed inset-0 z-30 bg-black/20 md:hidden" data-testid="button-menu-overlay" />}
+      <main className="min-w-0 flex-1">
+        <header className="flex h-[76px] items-center justify-between border-b border-border/70 px-5 md:px-10">
+          <div className="flex items-center gap-3">
+            <button type="button" onClick={() => setMobileNav(true)} className="rounded-lg p-2 text-muted-foreground md:hidden" aria-label="Open navigation" data-testid="button-open-navigation"><Menu size={20} /></button>
+            <div className="hidden items-center gap-2 text-xs text-muted-foreground sm:flex"><span>Ruzivo</span><span className="text-border">/</span><span className="text-foreground">Live data from your API</span></div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-secondary text-xs font-semibold text-secondary-foreground" data-testid="avatar-user">RZ</div>
+          </div>
+        </header>
+        <div className="mx-auto max-w-[1380px] px-5 py-8 md:px-10 md:py-10">{children}</div>
+      </main>
+    </div>
+  );
+}

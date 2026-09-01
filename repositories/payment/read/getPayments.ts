@@ -24,7 +24,9 @@ export async function getPayments(learner_id:string|null,class_name:string|null,
         ON g.gender_id = l.gender_id
         JOIN payment_methods pm
         ON pm.payment_method_id  =p.payment_method_id
-        WHERE 
+        WHERE
+        l.deleted_at IS NULL
+         AND
         ($1::text IS NULL OR l.learner_id= $1::text)
          AND
         ($2::text IS NULL OR ca.class_name= $2::text)

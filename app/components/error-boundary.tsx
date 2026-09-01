@@ -46,8 +46,10 @@ function DefaultFallback({ error, resetError }: ErrorFallbackProps) {
           This part of the app hit an error. The rest of the app is still
           running.
         </p>
-        {/* Dev only: messages can carry API responses and other internals. */}
-        {import.meta.env.DEV ? (
+        {/* Dev only: messages can carry API responses and other internals.
+            (Was `import.meta.env.DEV`, a Vite-ism Next.js never populates —
+            it silently always evaluated to false under Next's bundler.) */}
+        {process.env.NODE_ENV !== 'production' ? (
           <pre className="mt-4 overflow-x-auto rounded bg-gray-100 p-3 text-left text-xs text-gray-800">
             {error.message || String(error)}
           </pre>

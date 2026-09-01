@@ -12,7 +12,9 @@ export async function getLearners(learner_id:string|null,class_name:string|null,
         ON ay.academic_year_id= e.academic_year_id
         JOIN class_categories ca 
         ON ca.class_category_id = e.class_category_id
-        WHERE 
+        WHERE
+        l.deleted_at IS NULL
+         AND
         ($1::text IS NULL OR l.learner_id= $1::text)
          AND
         ($2::text IS NULL OR ca.class_name= $2::text)
