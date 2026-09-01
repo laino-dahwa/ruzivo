@@ -19,6 +19,17 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
+async function errorMessageFor(response: Response) {
+  let message = `Request failed (${response.status})`;
+  try {
+    const body = await response.json();
+    message = body?.error ?? message;
+  } catch {
+    // ignore parse failure, keep default message
+  }
+  return message;
+}
+
 function qs(params: Record<string, string | null | undefined>) {
   const search = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => search.set(key, value && value.length > 0 ? value : 'null'));
@@ -200,4 +211,80 @@ export const balancesApi = {
       income_name: filters.income_name,
       payment_period: filters.payment_period,
     })}`),
+};
+
+// ---------- Reports ----------
+export type ReportDate = string | null; // 'YYYY-MM-DD', or null for "All Dates"
+
+export type PaymentReportRow = {
+  payment_id: number;
+  paid_at_local: string;
+  learner_id: string;
+  first_name: string;
+  last_name: string;
+  class_name: string;
+  income_name: string;
+  method_name: string;
+  amount: string;
+};
+
+export type OwingReportRow = {
+  charge_id: number;
+  charge_date: string;
+  learner_id: string;
+  first_name: string;
+  last_name: string;
+  class_name: string;
+  income_name: string;
+  period_name: string;
+  academic_year_name: string;
+  expected: string;
+  paid: string;
+  balance: string;
+  status: 'Unpaid' | 'Partially Paid';
+};
+
+export type ExpenseReportRow = {
+  expense_id: number;
+  expense_date: string;
+  description: string;
+  category_name: string;
+  amount: string;
+};
+
+export type ReportSummary = {
+  totalPayments: number;
+  totalOutstanding: number;
+  totalExpenses: number;
+  netPosition: number;
+};
+
+export type ReportType = 'payments' | 'owing' | 'expenses';
+
+function reportDateParam(date: ReportDate) {
+  return `date=${date ? encodeURIComponent(date) : 'all'}`;
+}
+
+export const reportsApi = {
+  summary: (schoolId: string, date: ReportDate) =>
+    request<ReportSummary>(`/api/schools/${schoolId}/reports/summary?${reportDateParam(date)}`),
+  payments: (schoolId: string, date: ReportDate) =>
+    request<{ rows: PaymentReportRow[]; total: number }>(`/api/schools/${schoolId}/reports/payments?${reportDateParam(date)}`),
+  owing: (schoolId: string, date: ReportDate) =>
+    request<{ rows: OwingReportRow[]; total: number }>(`/api/schools/${schoolId}/reports/owing?${reportDateParam(date)}`),
+  expenses: (schoolId: string, date: ReportDate) =>
+    request<{ rows: ExpenseReportRow[]; total: number }>(`/api/schools/${schoolId}/reports/expenses?${reportDateParam(date)}`),
+  downloadPdf: async (schoolId: string, type: ReportType, date: ReportDate) => {
+    const response = await fetch(`/api/schools/${schoolId}/reports/${type}?${reportDateParam(date)}&format=pdf`);
+    if (!response.ok) throw new Error(await errorMessageFor(response));
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${type}-report-${date ?? 'all-dates'}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  },
 };

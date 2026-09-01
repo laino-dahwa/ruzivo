@@ -3,7 +3,7 @@ import { query } from "../../../lib/db";
 type expense ={
     expense_category_id:string,
     amount:number,
-    expense_date:Date,
+    expense_date:string,
     description:string,
 
 }
