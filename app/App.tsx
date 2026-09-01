@@ -905,8 +905,11 @@ function Expenses() {
   const queryClient = useQueryClient();
   const ref = useSchoolReferenceData(schoolId);
   const [form, setForm] = useState({ expense_category_id: '', amount: '', expense_date: '', description: '' });
+  const [pendingDeleteExpense, setPendingDeleteExpense] = useState<Expense | null>(null);
 
   const expensesQuery = useQuery({ queryKey: ['expenses', schoolId], queryFn: () => expensesApi.list(schoolId!), enabled: !!schoolId });
+
+  const categoryName = (id: number) => ref.expenseCategories.data?.find((c) => c.expense_category_id === id)?.expense_name ?? '—';
 
   const createExpense = useMutation({
     mutationFn: () => expensesApi.create(schoolId!, [{ expense_category_id: form.expense_category_id, amount: Number(form.amount), expense_date: form.expense_date, description: form.description }]),
@@ -916,6 +919,16 @@ function Expenses() {
       queryClient.invalidateQueries({ queryKey: ['expenses', schoolId] });
     },
     onError: (error) => toast({ title: 'Could not log expense', description: (error as Error).message, variant: 'destructive' }),
+  });
+
+  const deleteExpense = useMutation({
+    mutationFn: (expenseId: number) => expensesApi.remove(schoolId!, expenseId),
+    onSuccess: () => {
+      toast({ title: 'Expense deleted' });
+      setPendingDeleteExpense(null);
+      queryClient.invalidateQueries({ queryKey: ['expenses', schoolId] });
+    },
+    onError: (error) => toast({ title: 'Could not delete expense', description: (error as Error).message, variant: 'destructive' }),
   });
 
   return (
@@ -941,16 +954,28 @@ function Expenses() {
           <div className="mt-6 overflow-x-auto rounded-2xl border border-border/80 bg-card p-5">
             <table className="w-full text-left text-xs">
               <thead className="bg-secondary/60 text-[10px] uppercase text-muted-foreground">
-                <tr><th className="px-3 py-2 font-semibold">Date</th><th className="px-3 py-2 font-semibold">Description</th><th className="px-3 py-2 font-semibold">Amount</th></tr>
+                <tr><th className="px-3 py-2 font-semibold">Date</th><th className="px-3 py-2 font-semibold">Category</th><th className="px-3 py-2 font-semibold">Description</th><th className="px-3 py-2 font-semibold">Amount</th><th className="px-3 py-2 font-semibold"></th></tr>
               </thead>
               <tbody className="divide-y divide-border/60">
-                {expensesQuery.isLoading && <tr><td className="px-3 py-3 text-muted-foreground" colSpan={3}>Loading…</td></tr>}
-                {!expensesQuery.isLoading && (expensesQuery.data?.length ?? 0) === 0 && <tr><td className="px-3 py-3 text-muted-foreground" colSpan={3}>No expenses found</td></tr>}
-                {expensesQuery.data?.map((expense, index) => (
-                  <tr key={index}>
+                {expensesQuery.isLoading && <tr><td className="px-3 py-3 text-muted-foreground" colSpan={5}>Loading…</td></tr>}
+                {!expensesQuery.isLoading && (expensesQuery.data?.length ?? 0) === 0 && <tr><td className="px-3 py-3 text-muted-foreground" colSpan={5}>No expenses found</td></tr>}
+                {expensesQuery.data?.map((expense) => (
+                  <tr key={expense.expense_id}>
                     <td className="px-3 py-2">{expense.expense_date ? new Date(expense.expense_date).toLocaleDateString('en-GB') : ''}</td>
+                    <td className="px-3 py-2">{categoryName(expense.expense_category_id)}</td>
                     <td className="px-3 py-2">{expense.description}</td>
                     <td className="px-3 py-2 font-semibold">{money(expense.amount)}</td>
+                    <td className="px-3 py-2 text-right">
+                      <button
+                        type="button"
+                        title="Delete this expense"
+                        disabled={deleteExpense.isPending}
+                        onClick={() => setPendingDeleteExpense(expense)}
+                        className="rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -959,6 +984,14 @@ function Expenses() {
           </div>
         </>
       )}
+      <ConfirmDialog
+        open={!!pendingDeleteExpense}
+        title="Delete this expense?"
+        description={pendingDeleteExpense ? `The ${categoryName(pendingDeleteExpense.expense_category_id)} expense of ${money(pendingDeleteExpense.amount)} will be removed.` : undefined}
+        pending={deleteExpense.isPending}
+        onCancel={() => setPendingDeleteExpense(null)}
+        onConfirm={() => { if (pendingDeleteExpense) deleteExpense.mutate(pendingDeleteExpense.expense_id); }}
+      />
     </AppShell>
   );
 }

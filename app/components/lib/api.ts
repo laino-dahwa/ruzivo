@@ -69,7 +69,11 @@ export const paymentPeriodsApi = referenceResource<PaymentPeriod, { school_id: s
 export const paymentMethodsApi = referenceResource<PaymentMethod, { school_id: string; method_name: string }>('payment_methods');
 export const incomeCategoriesApi = referenceResource<IncomeCategory, { school_id: string; income_name: string; income_limit: string }>('income_categories');
 export const expenseCategoriesApi = referenceResource<ExpenseCategory, { school_id: string; expense_name: string }>('expense_categories');
-export const expensesApi = referenceResource<Expense, { expense_category_id: string; amount: number; expense_date: string; description: string }>('expenses');
+export const expensesApi = {
+  ...referenceResource<Expense, { expense_category_id: string; amount: number; expense_date: string; description: string }>('expenses'),
+  remove: (schoolId: string, expenseId: number) =>
+    request<Expense>(`/api/schools/${schoolId}/expenses?expense_id=${encodeURIComponent(expenseId)}`, { method: 'DELETE' }),
+};
 
 // ---------- Learners ----------
 export type Learner = {
