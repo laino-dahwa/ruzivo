@@ -1,6 +1,6 @@
 {
   "name": "ruzivo",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "School finance management — payments, expenses, and reporting.",
   "author": "laino-dahwa",
@@ -10,7 +10,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
     "migrate": "node scripts/migrate.mjs",
     "electron:build": "tsc -p electron/tsconfig.json && node scripts/copy-electron-static.mjs",
