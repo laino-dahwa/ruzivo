@@ -13,7 +13,10 @@ export function useIsMobile() {
       setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
     };
     mql.addEventListener('change', onChange);
-    setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
+    // Deferred to a microtask rather than called synchronously here — see
+    // react-hooks/set-state-in-effect; the effect body should only
+    // subscribe, with state sync happening in a callback.
+    queueMicrotask(onChange);
     return () => mql.removeEventListener('change', onChange);
   }, []);
 

@@ -108,7 +108,11 @@ const Carousel = React.forwardRef<
         return;
       }
 
-      onSelect(api);
+      // Deferred to a microtask rather than called synchronously here: this
+      // is a one-time initial sync of state derived from an external system
+      // (embla's api), and the effect body itself should only subscribe —
+      // see react-hooks/set-state-in-effect.
+      queueMicrotask(() => onSelect(api));
       api.on('reInit', onSelect);
       api.on('select', onSelect);
 

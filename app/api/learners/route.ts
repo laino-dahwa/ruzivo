@@ -1,15 +1,11 @@
 import { NextResponse } from "next/server";
 import {getLearners} from "../../../repositories/learner/read/getLearners"
 import { URLSearchParams } from "url";
-import { CreateLearnerInput, createLearners } from "@/repositories/learner/create/addLearner";
+import { createLearners } from "@/repositories/learner/create/addLearner";
 import { updateLearners } from "@/repositories/learner/update/updateLearner";
 import { deleteLearner } from "@/repositories/learner/delete/deleteLearner";
 
 export const runtime = "nodejs";
-
-type Params= {
-    params: Promise<{learner_id:string|null}>
-}
 
 function getOptionalParam(searchParams:URLSearchParams,name:string):string|null{
     const value = searchParams.get(name);
@@ -19,7 +15,7 @@ function getOptionalParam(searchParams:URLSearchParams,name:string):string|null{
     return value
 }
 
-export async function GET(request:Request,{ params }:Params) {
+export async function GET(request:Request) {
     try{
         
         const {searchParams} = new URL(request.url)

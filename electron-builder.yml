@@ -1,0 +1,66 @@
+appId: com.ruzivo.desktop
+productName: Ruzivo
+directories:
+  output: release
+  buildResources: build
+
+# Only the compiled Electron main/preload code + package.json (for
+# app.getVersion() and dependency resolution) come from the project root.
+# The Next.js app itself is not part of this asar — it's copied in whole via
+# extraResources below and run as a separate spawned process, exactly as in
+# development.
+files:
+  - dist-electron/**/*
+  - package.json
+
+# asar packaging is deliberately off. embedded-postgres's own startup code
+# chmods its bundled postgres.exe/initdb.exe — verified that this throws
+# ENOENT when those binaries are packed into app.asar, even with an
+# asarUnpack entry unpacking the real files to app.asar.unpacked (the
+# package's internal path resolution still points at the in-archive path).
+# asar is a pure packaging optimization with no functional requirement here,
+# so avoiding this whole class of asar-vs-native-binary path issues by
+# turning it off entirely is more robust than fighting a third-party
+# package's internals.
+asar: false
+
+extraResources:
+  # electron-builder's extraResources copy applies the same default
+  # source-filtering rules used for the app's own `files` — which drop
+  # node_modules entirely — unless overridden with an explicit filter.
+  # Verified: without this, .next/standalone's own node_modules (and even
+  # its nested .next/ folder) were silently missing from the packaged app,
+  # and the spawned server crashed with "Cannot find module 'next'".
+  - from: .next/standalone
+    to: .next/standalone
+    filter:
+      - '**/*'
+  - from: migrations
+    to: migrations
+
+# Even with the filter above, electron-builder still silently drops any
+# directory literally named `node_modules` from extraResources copies — it
+# gets special dependency-tree handling elsewhere in the tool that applies
+# here too, with no config to opt out. Verified: after the filter fix, the
+# nested .next/standalone/.next folder copies correctly, but the sibling
+# .next/standalone/node_modules (containing next/react/pg, required by
+# server.js at runtime) still does not. Copying it here with a plain
+# afterPack script bypasses electron-builder's file-matching entirely.
+afterPack: scripts/electron-after-pack.js
+
+win:
+  target: nsis
+  artifactName: ${productName}-Setup-${version}.${ext}
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  # Preserves userData (config, logs, embedded Postgres data/backups) across
+  # installs/uninstalls — NSIS never touches AppData by default, this just
+  # documents that the installer isn't asked to.
+  deleteAppDataOnUninstall: false
+
+publish:
+  provider: github
+  owner: laino-dahwa
+  repo: ruzivo

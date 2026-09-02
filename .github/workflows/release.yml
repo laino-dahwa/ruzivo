@@ -1,0 +1,88 @@
+name: Release
+
+# Triggered by pushing a `vX.Y.Z` tag. Every gate below runs as a plain
+# sequential step in one job, on purpose: GitHub Actions stops the job at
+# the first failing step, so the final publish step can only ever run once
+# lint, typecheck, the full test suite, and the build have all genuinely
+# succeeded on the exact commit being tagged. Nothing here re-uses a
+# previous test.yml/build.yml run — a release is self-contained and
+# re-verifies everything itself.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+# electron-builder's GitHub publish target needs write access to create the
+# Release and upload assets — many repos now default GITHUB_TOKEN to
+# read-only, so this is requested explicitly rather than relying on that
+# repo setting.
+permissions:
+  contents: write
+
+env:
+  PGHOST: localhost
+  PGPORT: 5432
+  PGUSER: postgres
+  PGPASSWORD: postgres
+  PGDATABASE: ruzivo
+  PGADMINDB: postgres
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Verify the pushed tag matches package.json's version
+        shell: bash
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          pkg_version=$(node -p "require('./package.json').version")
+          if [ "$tag_version" != "$pkg_version" ]; then
+            echo "::error::Tag v$tag_version does not match package.json version $pkg_version — bump package.json and re-tag."
+            exit 1
+          fi
+
+      - name: Apply database migrations
+        run: npm run migrate
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build Next.js (standalone output)
+        run: npm run electron:build:prod
+
+      - name: Package and publish the Windows installer to GitHub Releases
+        run: npx electron-builder --win --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

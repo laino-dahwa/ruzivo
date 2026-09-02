@@ -1,0 +1,30 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    # Windows-only for now, matching the desktop app's initial platform
+    # target — this is also the only OS that can actually produce/validate
+    # the NSIS installer and the Windows embedded-Postgres binaries.
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build Next.js (standalone output)
+        run: npm run electron:build:prod
+
+      - name: Package Electron app (unpacked — validates packaging without publishing)
+        run: npx electron-builder --dir --win

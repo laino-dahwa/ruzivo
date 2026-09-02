@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Ruzivo Setup</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #f8f8f8; color: #1a1a1a; padding: 2rem; }
+  .card { max-width: 440px; margin: 0 auto; background: #fff; border: 1px solid #ddd; border-radius: 12px; padding: 1.75rem; }
+  h1 { font-size: 1.1rem; margin: 0 0 1rem; }
+  p.detail { font-size: .85rem; color: #666; margin: 0 0 1.25rem; }
+  .tabs { display: flex; gap: .25rem; border: 1px solid #ddd; border-radius: 8px; padding: .25rem; margin-bottom: 1.25rem; }
+  .tabs button { flex: 1; border: none; background: transparent; padding: .5rem; font-size: .8rem; font-weight: 600; border-radius: 6px; cursor: pointer; color: #666; }
+  .tabs button.active { background: #111; color: #fff; }
+  label { display: block; margin-top: .85rem; font-size: .8rem; font-weight: 600; }
+  input { width: 100%; margin-top: .3rem; padding: .5rem .6rem; box-sizing: border-box; border: 1px solid #ccc; border-radius: 6px; font-size: .85rem; }
+  button.primary { margin-top: 1.5rem; padding: .6rem 1.3rem; border: none; border-radius: 6px; background: #111; color: #fff; font-size: .85rem; font-weight: 600; cursor: pointer; width: 100%; }
+  button.primary:disabled { opacity: .6; cursor: default; }
+  #status { margin-top: 1rem; font-size: .8rem; min-height: 1.2em; }
+  #status.error { color: #c0392b; }
+  #status.ok { color: #1e8e3e; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Set up PostgreSQL</h1>
+
+    <div class="tabs">
+      <button type="button" class="tab active" data-mode="existing">I have PostgreSQL</button>
+      <button type="button" class="tab" data-mode="embedded">Set it up for me</button>
+    </div>
+
+    <div id="existing-panel">
+      <p class="detail">Enter the details of an existing PostgreSQL server. Ruzivo will create its database on that server if it doesn't already exist — nothing else on the server is touched.</p>
+      <label>Host<input id="host" value="localhost" /></label>
+      <label>Port<input id="port" value="5432" /></label>
+      <label>Database<input id="database" value="ruzivo" /></label>
+      <label>User<input id="user" value="postgres" /></label>
+      <label>Password<input id="password" type="password" /></label>
+      <button type="button" class="primary" id="submit-existing">Connect &amp; Continue</button>
+    </div>
+
+    <div id="embedded-panel" hidden>
+      <p class="detail">Ruzivo will install and run its own private PostgreSQL server, stored entirely inside this app's data folder. Nothing else on your computer is affected, and no existing PostgreSQL installation is required.</p>
+      <button type="button" class="primary" id="submit-embedded">Set Up Automatically</button>
+    </div>
+
+    <div id="status"></div>
+  </div>
+  <script src="./renderer.js"></script>
+</body>
+</html>

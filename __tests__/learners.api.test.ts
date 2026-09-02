@@ -103,7 +103,7 @@ describe("POST /api/learners (create)", () => {
 
 describe("GET /api/learners (retrieve + filters)", () => {
   it("returns an empty array for a nonexistent learner_id filter", async () => {
-    const response = await GET(makeRequest("http://localhost/api/learners?learner_id=NOSUCHID"), { params: Promise.resolve({ learner_id: null }) });
+    const response = await GET(makeRequest("http://localhost/api/learners?learner_id=NOSUCHID"));
     expect(response.status).toBe(200);
     expect(await readJson(response)).toEqual([]);
   });
@@ -114,7 +114,7 @@ describe("GET /api/learners (retrieve + filters)", () => {
       body: JSON.stringify([makeLearnerInput({ first_name: "Bianca", last_name: "Filter" })]),
     })));
 
-    const response = await GET(makeRequest(`http://localhost/api/learners?learner_id=${created.learner_id}`), { params: Promise.resolve({ learner_id: null }) });
+    const response = await GET(makeRequest(`http://localhost/api/learners?learner_id=${created.learner_id}`));
     const body = await readJson(response);
     expect(body).toHaveLength(1);
     expect(body[0]).toMatchObject({ learner_id: created.learner_id, first_name: "Bianca", last_name: "Filter", gender_name: "Test Gender A", class_name: "Test Class A" });
@@ -126,13 +126,13 @@ describe("GET /api/learners (retrieve + filters)", () => {
       body: JSON.stringify([makeLearnerInput({ first_name: "Cara", last_name: "Filters" })]),
     })));
 
-    const byClass = await readJson(await GET(makeRequest(`http://localhost/api/learners?class_name=${encodeURIComponent("Test Class A")}`), { params: Promise.resolve({ learner_id: null }) }));
+    const byClass = await readJson(await GET(makeRequest(`http://localhost/api/learners?class_name=${encodeURIComponent("Test Class A")}`)));
     expect(byClass.some((row: { learner_id: string }) => row.learner_id === created.learner_id)).toBe(true);
 
-    const byGender = await readJson(await GET(makeRequest(`http://localhost/api/learners?gender_name=${encodeURIComponent("Test Gender A")}`), { params: Promise.resolve({ learner_id: null }) }));
+    const byGender = await readJson(await GET(makeRequest(`http://localhost/api/learners?gender_name=${encodeURIComponent("Test Gender A")}`)));
     expect(byGender.some((row: { learner_id: string }) => row.learner_id === created.learner_id)).toBe(true);
 
-    const byYear = await readJson(await GET(makeRequest(`http://localhost/api/learners?academic_year=${encodeURIComponent("Test Year A")}`), { params: Promise.resolve({ learner_id: null }) }));
+    const byYear = await readJson(await GET(makeRequest(`http://localhost/api/learners?academic_year=${encodeURIComponent("Test Year A")}`)));
     expect(byYear.some((row: { learner_id: string }) => row.learner_id === created.learner_id)).toBe(true);
   });
 });
@@ -147,7 +147,7 @@ describe("DELETE /api/learners (soft delete)", () => {
     const deleteResponse = await DELETE(makeRequest(`http://localhost/api/learners?learner_id=${created.learner_id}`, { method: "DELETE" }));
     expect(deleteResponse.status).toBe(201);
 
-    const getResponse = await GET(makeRequest(`http://localhost/api/learners?learner_id=${created.learner_id}`), { params: Promise.resolve({ learner_id: null }) });
+    const getResponse = await GET(makeRequest(`http://localhost/api/learners?learner_id=${created.learner_id}`));
     expect(await readJson(getResponse)).toEqual([]);
 
     const dbRow = await query("SELECT deleted_at FROM learners WHERE learner_id = $1", [created.learner_id]);

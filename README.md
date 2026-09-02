@@ -1,36 +1,50 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Ruzivo
 
-## Getting Started
+School finance management — payments, expenses, owing balances, and PDF reporting. One Next.js codebase, shipped two ways: as a web app, and as a Windows desktop app (Electron) with its own managed PostgreSQL.
 
-First, run the development server:
+## Web development
 
 ```bash
+cp .env.example .env.local   # fill in PG* to point at a local Postgres
+npm install
+npm run migrate              # applies migrations/*.sql
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Other scripts: `npm run build` / `npm run start` (production web server), `npm run lint`, `npm run typecheck`, `npm test`.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Desktop development
 
-## Learn More
+The Electron shell spawns the same Next.js app as a child process and points a `BrowserWindow` at it — no separate frontend. Two ways to run it locally:
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+# Thin viewer over `next dev` (fastest inner loop, HMR works as normal)
+npm run dev              # in one terminal
+npm run electron:dev     # in another
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+# Exercise the real production startup path (Postgres setup screen,
+# migrations, spawned standalone server) without a full installer build
+RUZIVO_FORCE_PRODUCTION=1 npm run electron:dev
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+To build and run the actual packaged app:
 
-## Deploy on Vercel
+```bash
+npm run electron:build:prod
+npx electron-builder --dir --win   # release/win-unpacked/Ruzivo.exe
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+See [docs/desktop.md](docs/desktop.md) for the architecture (process model, platform abstraction, PostgreSQL provisioning), [docs/migrations.md](docs/migrations.md) for schema changes, [docs/releasing.md](docs/releasing.md) for cutting a release, and [docs/troubleshooting.md](docs/troubleshooting.md) for known packaging gotchas.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Project structure
+
+- `app/` — Next.js App Router routes and layouts (thin Server Components rendering `components/*` client views)
+- `components/` — feature UI (`payments/`, `expenses/`, `learners/`, `reports/`, `school/`, `reference-data/`, `layout/`)
+- `services/` — client-side fetch layer
+- `repositories/` — one raw-SQL function per file, grouped by entity and CRUD verb
+- `lib/` — `db.ts` (pool/query/transaction), `platform/` (web/desktop abstraction), `pdf/`, `currency.ts`
+- `migrations/` — versioned `node-pg-migrate` SQL migrations (source of truth for the schema)
+- `electron/` — the desktop shell: main process, preload, Postgres provisioning, updater
+- `.github/workflows/` — CI (`test.yml`, `build.yml`) and release (`release.yml`)

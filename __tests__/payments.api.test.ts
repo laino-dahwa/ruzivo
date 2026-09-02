@@ -135,7 +135,7 @@ describe("GET /api/learners/payments (retrieve + filters)", () => {
       body: JSON.stringify(makePaymentInput(75)),
     })));
 
-    const response = await GET(makeRequest(`http://localhost/api/learners/payments?learner_id=${learnerId}`), { params: Promise.resolve({ learner_id: null }) });
+    const response = await GET(makeRequest(`http://localhost/api/learners/payments?learner_id=${learnerId}`));
     const body = await readJson(response);
     const match = body.find((row: { charge_id: number }) => row.charge_id === created.charge.charge_id);
     expect(match).toBeDefined();
@@ -144,7 +144,7 @@ describe("GET /api/learners/payments (retrieve + filters)", () => {
   });
 
   it("returns an empty array for a nonexistent learner_id filter", async () => {
-    const response = await GET(makeRequest("http://localhost/api/learners/payments?learner_id=NOSUCHID"), { params: Promise.resolve({ learner_id: null }) });
+    const response = await GET(makeRequest("http://localhost/api/learners/payments?learner_id=NOSUCHID"));
     expect(response.status).toBe(200);
     expect(await readJson(response)).toEqual([]);
   });
@@ -162,7 +162,7 @@ describe("DELETE /api/learners/payments (delete a charge)", () => {
     const deleteResponse = await DELETE(makeRequest(`http://localhost/api/learners/payments?charge_id=${chargeId}`, { method: "DELETE" }));
     expect(deleteResponse.status).toBe(201);
 
-    const getResponse = await GET(makeRequest(`http://localhost/api/learners/payments?learner_id=${learnerId}`), { params: Promise.resolve({ learner_id: null }) });
+    const getResponse = await GET(makeRequest(`http://localhost/api/learners/payments?learner_id=${learnerId}`));
     const rows = await readJson(getResponse);
     expect(rows.some((row: { charge_id: number }) => row.charge_id === chargeId)).toBe(false);
 
@@ -212,13 +212,13 @@ describe("Soft-deleted learners are excluded from payments/balances (regression)
 
     await DELETE_LEARNER(makeRequest(`http://localhost/api/learners?learner_id=${softDeleteLearner.learner_id}`, { method: "DELETE" }));
 
-    const learnerGet = await GET_LEARNERS(makeRequest(`http://localhost/api/learners?learner_id=${softDeleteLearner.learner_id}`), { params: Promise.resolve({ learner_id: null }) });
+    const learnerGet = await GET_LEARNERS(makeRequest(`http://localhost/api/learners?learner_id=${softDeleteLearner.learner_id}`));
     expect(await readJson(learnerGet)).toEqual([]);
 
-    const paymentsGet = await GET(makeRequest(`http://localhost/api/learners/payments?learner_id=${softDeleteLearner.learner_id}`), { params: Promise.resolve({ learner_id: null }) });
+    const paymentsGet = await GET(makeRequest(`http://localhost/api/learners/payments?learner_id=${softDeleteLearner.learner_id}`));
     expect(await readJson(paymentsGet)).toEqual([]);
 
-    const balancesGet = await GET_BALANCES(makeRequest(`http://localhost/api/learners/balances?learner_id=${softDeleteLearner.learner_id}`), { params: Promise.resolve({ learner_id: null }) });
+    const balancesGet = await GET_BALANCES(makeRequest(`http://localhost/api/learners/balances?learner_id=${softDeleteLearner.learner_id}`));
     expect(await readJson(balancesGet)).toEqual([]);
 
     // cleanup: this learner's charge/payment/enrolment aren't touched by DELETE_LEARNER (soft delete only)

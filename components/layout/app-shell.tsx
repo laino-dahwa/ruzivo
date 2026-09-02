@@ -6,6 +6,7 @@ import { useState, type ReactNode } from 'react';
 import { CalendarDays, Menu, WalletCards, X } from 'lucide-react';
 import { useCurrentSchoolId } from '../../lib/client/current-school-id';
 import { nav } from './nav-config';
+import { UpdateNotice } from './update-notice';
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -14,6 +15,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="grain min-h-[100dvh] bg-background md:flex">
+      <UpdateNotice />
       <aside className={`fixed inset-y-0 left-0 z-40 w-[254px] bg-sidebar px-5 py-6 text-sidebar-foreground transition-transform duration-300 md:relative md:translate-x-0 ${mobileNav ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex h-full flex-col">
           <div className="flex items-center justify-between px-2">
