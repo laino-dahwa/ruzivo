@@ -1,36 +1,31 @@
 name: Release
 
-# Triggered by pushing a `vX.Y.Z` tag. Every gate below runs as a plain
-# sequential step in one job, on purpose: GitHub Actions stops the job at
-# the first failing step, so the final publish step can only ever run once
-# lint, typecheck, the full test suite, and the build have all genuinely
-# succeeded on the exact commit being tagged. Nothing here re-uses a
-# previous test.yml/build.yml run — a release is self-contained and
-# re-verifies everything itself.
+# Triggered by pushing a `vX.Y.Z` tag. Split into two dependent jobs rather
+# than one, because GitHub Actions service containers (Docker-based) are
+# only supported on Linux runners — `windows-latest` rejects a job outright
+# at startup if it declares one, before any step runs. `verify` does the
+# Postgres-dependent gate (migrate/lint/typecheck/test) on Linux; `release`
+# only starts once that succeeds, and does the Windows-only build/package/
+# publish, which needs no live database. Nothing here reuses a previous
+# test.yml/build.yml run — a release re-verifies everything itself, just
+# split across two jobs instead of one.
 
 on:
   push:
     tags:
       - 'v*'
 
-# electron-builder's GitHub publish target needs write access to create the
-# Release and upload assets — many repos now default GITHUB_TOKEN to
-# read-only, so this is requested explicitly rather than relying on that
-# repo setting.
-permissions:
-  contents: write
-
-env:
-  PGHOST: localhost
-  PGPORT: 5432
-  PGUSER: postgres
-  PGPASSWORD: postgres
-  PGDATABASE: ruzivo
-  PGADMINDB: postgres
-
 jobs:
-  release:
-    runs-on: windows-latest
+  verify:
+    runs-on: ubuntu-latest
+
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: ruzivo
+      PGADMINDB: postgres
 
     services:
       postgres:
@@ -78,6 +73,28 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+  release:
+    needs: verify
+    runs-on: windows-latest
+
+    # electron-builder's GitHub publish target needs write access to create
+    # the Release and upload assets — many repos now default GITHUB_TOKEN to
+    # read-only, so this is requested explicitly rather than relying on that
+    # repo setting. Scoped to just this job, which is the only one that
+    # writes anything.
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
 
       - name: Build Next.js (standalone output)
         run: npm run electron:build:prod
