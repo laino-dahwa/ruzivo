@@ -9,6 +9,7 @@ import { createPaymentPeriod } from "../repositories/school/create/createPayment
 import { createIncomeCategory } from "../repositories/school/create/createIncomeCategory";
 import { createAcademicYear } from "../repositories/school/create/createAcademicYear";
 import { createPaymentMethod } from "../repositories/school/create/createPaymentMethod";
+import { createGender } from "../repositories/school/create/createGenderCategory";
 import { createExpenseCategory } from "../repositories/school/create/createExpenseCategory";
 import { createExpense } from "../repositories/school/create/createExpense";
 import { createLearners } from "../repositories/learner/create/addLearner";
@@ -25,8 +26,6 @@ import { query } from "../lib/db";
 const SCHOOL_1 = "TR1";
 const SCHOOL_2 = "TR2";
 const SCHOOL_EMPTY = "TR3";
-
-const EXISTING_GENDER_ID = 3; // "Male", pre-existing seed data (genders aren't school-scoped by FK)
 
 const DATE_A = "2026-08-15"; // learner A: charged + partially paid
 const DATE_B = "2026-08-20"; // learner B: charged, never paid (raw-inserted, no payment)
@@ -53,6 +52,7 @@ type SchoolFixture = {
     academicYearId: number;
     paymentMethodId: number;
     expenseCategoryId: number;
+    genderId: number;
 };
 
 async function buildSchoolFixture(schoolId: string, incomeLimit: number): Promise<SchoolFixture> {
@@ -63,6 +63,7 @@ async function buildSchoolFixture(schoolId: string, incomeLimit: number): Promis
     const [academicYear] = await createAcademicYear([{ school_id: schoolId, academic_year_name: "2026", start_date: "2026-01-01", end_date: "2026-12-31" }]);
     const [paymentMethod] = await createPaymentMethod([{ school_id: schoolId, method_name: "Cash" }]);
     const [expenseCategory] = await createExpenseCategory([{ school_id: schoolId, expense_name: "Utilities" }]);
+    const [gender] = await createGender([{ school_id: schoolId, gender_name: "Male" }]);
 
     return {
         schoolId,
@@ -73,6 +74,7 @@ async function buildSchoolFixture(schoolId: string, incomeLimit: number): Promis
         academicYearId: academicYear.academic_year_id,
         paymentMethodId: paymentMethod.payment_method_id,
         expenseCategoryId: expenseCategory.expense_category_id,
+        genderId: gender.gender_id,
     };
 }
 
@@ -81,7 +83,7 @@ async function addLearnerWithEnrolment(fixture: SchoolFixture, firstName: string
         school_id: fixture.schoolId,
         first_name: firstName,
         last_name: "Test",
-        gender_id: EXISTING_GENDER_ID,
+        gender_id: fixture.genderId,
         date_of_birth: "2015-01-01",
         class_category_id: fixture.classCategoryId,
         academic_year_id: fixture.academicYearId,
