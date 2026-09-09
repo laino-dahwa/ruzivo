@@ -18,7 +18,12 @@
 /out/
 
 # production
-/build
+# `build/` is electron-builder's buildResources dir. Its contents stay ignored
+# (notably the fetched vc_redist.x64.exe) but the NSIS include script is source
+# and must be committed, which needs `/build/*` rather than `/build` — git
+# cannot re-include a file whose parent directory is itself excluded.
+/build/*
+!/build/installer.nsh
 
 # misc
 .DS_Store

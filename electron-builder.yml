@@ -55,6 +55,12 @@ win:
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
+  # Chains the Visual C++ redistributable when it's missing. The bundled
+  # PostgreSQL binaries import VCRUNTIME140.dll, which ships with that
+  # redistributable rather than with Windows, so without it initdb.exe cannot
+  # start on a clean machine. build/vc_redist.x64.exe is fetched at build time
+  # by scripts/fetch-vc-redist.mjs.
+  include: build/installer.nsh
   # Preserves userData (config, logs, embedded Postgres data/backups) across
   # installs/uninstalls — NSIS never touches AppData by default, this just
   # documents that the installer isn't asked to.
