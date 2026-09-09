@@ -3,6 +3,9 @@ import {getAcademicYears} from "../../../../../repositories/school/read/getAcade
 import { createAcademicYear } from "@/repositories/school/create/createAcademicYear";
 import { UpdateAcademicYear } from "@/repositories/school/update/updateAcademicYears";
 
+import { deleteAcademicYear } from "../../../../../repositories/school/delete/deleteAcademicYear";
+import { ReferenceInUseError } from "../../../../../repositories/school/referenceTable";
+
 export const runtime = "nodejs";
 
 type Params= {
@@ -112,5 +115,26 @@ export async function PATCH(request:Request){
     }
 }
 
+export async function DELETE(request:Request,{ params }:Params){
+    try{
+        const { school_id } = await params;
+        const {searchParams} = new URL(request.url)
+        const raw = searchParams.get("academic_year_id")
 
+        if (!raw){
+            return NextResponse.json({ error:"academic_year_id is required" }, { status:400 })
+        }
 
+        const deleted = await deleteAcademicYear(school_id, parseInt(raw, 10))
+
+        return NextResponse.json(deleted, { status:200 })
+    }catch(error){
+        // Still referenced by real records — a rejected request, not a fault.
+        if (error instanceof ReferenceInUseError) {
+            return NextResponse.json({ error: error.message }, { status:409 })
+        }
+
+        console.error("Delete failed :",error)
+        return NextResponse.json({ error:"Delete failed" }, { status:500 })
+    }
+}

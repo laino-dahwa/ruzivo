@@ -1,56 +1,17 @@
-import { query } from "../../../lib/db";
+import { updateReferenceRows } from "../referenceTable";
+import { GENDERS } from "../referenceTables";
 
-type UpdateGender = {
-  school_id :string
-  gender_name :string,
+export type UpdateGender = {
+  school_id: string;
+  gender_id: number;
+  gender_name: string;
 };
 
-export async function updateGender(genders: UpdateGender[]) {
-  if (genders.length === 0) {
-    return [];
-  }
-
-  const values: unknown[] = [];
-
-  const placeholders = genders.map((gender, index) => {
-    const offset = index * 2;
-
-    values.push(
-      gender.school_id,
-      gender.gender_name ?? null
-      
-
-    );
-
-    return `(
-      $${offset + 1},
-      $${offset + 2}
-    )`;
-  });
-
-  const result = await query(
-    `
-    UPDATE genders AS s
-    SET
-      gender_name = COALESCE(v.gender_name, s.gender_name),
-  
-
-    FROM (
-      VALUES
-        ${placeholders.join(",")}
-    ) AS v(
-      school_id,
-      gender_name
-    )
-
-    WHERE s.school_id = v.school_id
-
-    RETURNING
-      s.school_id,
-      s.gender_name,
-    `,
-    values
-  );
-
-  return result.rows;
+/**
+ * Renames existing rows, matched by their own id and scoped to the owning
+ * school. The id itself is never editable, so records that reference it
+ * (learners, charges, payments, expenses) are unaffected by a rename.
+ */
+export async function updateGender(rows: UpdateGender[]) {
+  return updateReferenceRows(GENDERS, rows as unknown as Record<string, unknown>[]);
 }

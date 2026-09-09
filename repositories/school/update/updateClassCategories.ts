@@ -1,53 +1,17 @@
-import { query } from "../../../lib/db";
+import { updateReferenceRows } from "../referenceTable";
+import { CLASS_CATEGORIES } from "../referenceTables";
 
-type UpdateClassCategory = {
-  school_id: string; 
-  class_name ?:string,
+export type UpdateClassCategoryInput = {
+  school_id: string;
+  class_category_id: number;
+  class_name: string;
 };
 
-export async function UpdateClassCategory(class_categories: UpdateClassCategory[]) {
-  if (class_categories.length === 0) {
-    return [];
-  }
-
-  const values: unknown[] = [];
-
-  const placeholders = class_categories.map((class_category, index) => {
-    const offset = index * 2;
-
-    values.push(
-      class_category.school_id,
-      class_category.class_name ?? null,
-    );
-
-    return `(
-      $${offset + 1},
-      $${offset + 2}
-    )`;
-  });
-
-  const result = await query(
-    `
-    UPDATE class_categories AS s
-    SET
-      class_name = COALESCE(v.class_name, s.class_name),
-
-    FROM (
-      VALUES
-        ${placeholders.join(",")}
-    ) AS v(
-      school_id,
-      class_name,
-    )
-
-    WHERE s.school_id = v.school_id
-
-    RETURNING
-      s.school_id,
-      s.class_name,
-    `,
-    values
-  );
-
-  return result.rows;
+/**
+ * Renames existing rows, matched by their own id and scoped to the owning
+ * school. The id itself is never editable, so records that reference it
+ * (learners, charges, payments, expenses) are unaffected by a rename.
+ */
+export async function UpdateClassCategory(rows: UpdateClassCategoryInput[]) {
+  return updateReferenceRows(CLASS_CATEGORIES, rows as unknown as Record<string, unknown>[]);
 }

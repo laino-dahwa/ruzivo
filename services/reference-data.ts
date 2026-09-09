@@ -14,6 +14,13 @@ export function referenceResource<TRow, TCreate>(segment: string) {
     list: (schoolId: string) => request<TRow[]>(`/api/schools/${schoolId}/${segment}`),
     create: (schoolId: string, rows: TCreate[]) =>
       request<TRow[]>(`/api/schools/${schoolId}/${segment}`, { method: 'POST', body: JSON.stringify(rows) }),
+    // Rows are matched by their own id server-side; the id is never editable,
+    // so anything referencing it is unaffected by a rename.
+    update: (schoolId: string, rows: Partial<TRow>[]) =>
+      request<TRow[]>(`/api/schools/${schoolId}/${segment}`, { method: 'PATCH', body: JSON.stringify(rows) }),
+    // Refused server-side (409) while records still reference the row.
+    remove: (schoolId: string, idParam: string, id: number) =>
+      request<TRow>(`/api/schools/${schoolId}/${segment}?${idParam}=${encodeURIComponent(String(id))}`, { method: 'DELETE' }),
   };
 }
 

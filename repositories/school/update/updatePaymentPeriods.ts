@@ -1,58 +1,17 @@
-import { query } from "../../../lib/db";
+import { updateReferenceRows } from "../referenceTable";
+import { PAYMENT_PERIODS } from "../referenceTables";
 
-type UpdatePaymentPeriod = {
-  school_id :string
-  period_name :string,
- 
+export type UpdatePaymentPeriodInput = {
+  school_id: string;
+  payment_period_id: number;
+  period_name: string;
 };
 
-export async function UpdatePaymentPeriod(payment_periods: UpdatePaymentPeriod[]) {
-  if (payment_periods.length === 0) {
-    return [];
-  }
-
-  const values: unknown[] = [];
-
-  const placeholders = payment_periods.map((payment_period, index) => {
-    const offset = index * 2;
-
-    values.push(
-      payment_period.school_id,
-      payment_period.period_name ?? null
-    );
-
-    return `(
-      $${offset + 1},
-      $${offset + 2}
-   
-    )`;
-  });
-
-  const result = await query(
-    `
-    UPDATE payment_periods AS s
-    SET
-      period_name = COALESCE(v.period_name, s.period_name),
- 
-
-    FROM (
-      VALUES
-        ${placeholders.join(",")}
-    ) AS v(
-      school_id,
-      period_name,
-      
-    )
-
-    WHERE s.school_id = v.school_id
-
-    RETURNING
-      s.school_id,
-      s.period_name,
-     ;
-    `,
-    values
-  );
-
-  return result.rows;
+/**
+ * Renames existing rows, matched by their own id and scoped to the owning
+ * school. The id itself is never editable, so records that reference it
+ * (learners, charges, payments, expenses) are unaffected by a rename.
+ */
+export async function UpdatePaymentPeriod(rows: UpdatePaymentPeriodInput[]) {
+  return updateReferenceRows(PAYMENT_PERIODS, rows as unknown as Record<string, unknown>[]);
 }

@@ -3,6 +3,9 @@ import {getClassCategories} from "../../../../../repositories/school/read/getCla
 import { createClassCategory } from "@/repositories/school/create/createClassCategory";
 import { UpdateClassCategory } from "@/repositories/school/update/updateClassCategories";
 
+import { deleteClassCategory } from "../../../../../repositories/school/delete/deleteClassCategory";
+import { ReferenceInUseError } from "../../../../../repositories/school/referenceTable";
+
 export const runtime = "nodejs";
 
 type Params= {
@@ -97,5 +100,26 @@ export async function PATCH(request:Request){
     }
 }
 
+export async function DELETE(request:Request,{ params }:Params){
+    try{
+        const { school_id } = await params;
+        const {searchParams} = new URL(request.url)
+        const raw = searchParams.get("class_category_id")
 
+        if (!raw){
+            return NextResponse.json({ error:"class_category_id is required" }, { status:400 })
+        }
 
+        const deleted = await deleteClassCategory(school_id, parseInt(raw, 10))
+
+        return NextResponse.json(deleted, { status:200 })
+    }catch(error){
+        // Still referenced by real records — a rejected request, not a fault.
+        if (error instanceof ReferenceInUseError) {
+            return NextResponse.json({ error: error.message }, { status:409 })
+        }
+
+        console.error("Delete failed :",error)
+        return NextResponse.json({ error:"Delete failed" }, { status:500 })
+    }
+}
