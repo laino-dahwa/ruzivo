@@ -27,9 +27,12 @@ export async function getReportSummary(school_id: string, report_date: string | 
 
     const owingResult = await query(
         `
+        -- Grouped by the fee (learner + income category + period + year), not
+        -- by charge row: each payment creates its own charge, so grouping by
+        -- charge_id counted a part-paid fee once per instalment. Matches
+        -- getOwingReport and getBalances.
         WITH owing AS (
             SELECT
-                c.charge_id,
                 ic.income_limit - COALESCE(SUM(p.amount), 0) AS balance
             FROM learners l
             JOIN charges c ON c.learner_id = l.learner_id
@@ -38,7 +41,8 @@ export async function getReportSummary(school_id: string, report_date: string | 
             LEFT JOIN payments p ON p.payment_id = pa.payment_id
             WHERE l.school_id = $1
               AND ($2::date IS NULL OR (c.created_at AT TIME ZONE $3)::date = $2::date)
-            GROUP BY c.charge_id, ic.income_limit
+            GROUP BY l.learner_id, ic.income_category_id, ic.income_limit,
+                     c.payment_period_id, c.academic_year_id
             HAVING ic.income_limit - COALESCE(SUM(p.amount), 0) > 0
         )
         SELECT COALESCE(SUM(balance), 0) AS total FROM owing

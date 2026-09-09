@@ -9,14 +9,17 @@ export type PdfColumn = {
 
 export type ReportPdfOptions = {
     appName: string;
-    schoolName: string;
+    /** Omitted where the underlying query is not scoped to a single school. */
+    schoolName?: string;
     reportTitle: string;
-    dateLabel: string;
+    /** Omitted for listing exports that aren't scoped to a reporting period. */
+    dateLabel?: string;
     generatedAtLabel: string;
     columns: PdfColumn[];
     rows: Record<string, string>[];
-    totalLabel: string;
-    totalValue: string;
+    /** Omitted for tables that have no meaningful total (e.g. a learner list). */
+    totalLabel?: string;
+    totalValue?: string;
     emptyMessage?: string;
 };
 
@@ -33,12 +36,16 @@ export function generateReportPdf(options: ReportPdfOptions): Promise<Buffer> {
         const rowHeight = 18;
 
         doc.font("Helvetica-Bold").fontSize(18).fillColor("#000").text(options.appName);
-        doc.font("Helvetica").fontSize(11).fillColor("#555").text(options.schoolName);
+        if (options.schoolName) {
+            doc.font("Helvetica").fontSize(11).fillColor("#555").text(options.schoolName);
+        }
         doc.moveDown(0.7);
         doc.font("Helvetica-Bold").fontSize(14).fillColor("#000").text(options.reportTitle.toUpperCase());
         doc.moveDown(0.3);
         doc.font("Helvetica").fontSize(9).fillColor("#333");
-        doc.text(`Reporting Period: ${options.dateLabel}`);
+        if (options.dateLabel) {
+            doc.text(`Reporting Period: ${options.dateLabel}`);
+        }
         doc.text(`Generated: ${options.generatedAtLabel}`);
         doc.moveDown(0.9);
 
@@ -88,11 +95,21 @@ export function generateReportPdf(options: ReportPdfOptions): Promise<Buffer> {
             });
         }
 
-        y += 6;
-        ensureSpace(26);
-        doc.moveTo(startX, y).lineTo(startX + pageWidth, y).strokeColor("#cccccc").stroke();
-        y += 8;
-        doc.font("Helvetica-Bold").fontSize(11).fillColor("#000").text(`${options.totalLabel}: ${options.totalValue}`, startX, y);
+        if (options.totalLabel !== undefined && options.totalValue !== undefined) {
+            y += 6;
+            ensureSpace(26);
+            doc.moveTo(startX, y).lineTo(startX + pageWidth, y).strokeColor("#cccccc").stroke();
+            y += 8;
+            doc.font("Helvetica-Bold").fontSize(11).fillColor("#000").text(`${options.totalLabel}: ${options.totalValue}`, startX, y);
+        } else {
+            // Keeps the row count visible on listing exports, which have no
+            // monetary total to summarise.
+            y += 6;
+            ensureSpace(26);
+            doc.moveTo(startX, y).lineTo(startX + pageWidth, y).strokeColor("#cccccc").stroke();
+            y += 8;
+            doc.font("Helvetica-Bold").fontSize(11).fillColor("#000").text(`Records: ${options.rows.length}`, startX, y);
+        }
 
         // Footers are drawn inside the bottom margin, which PDFKit otherwise
         // treats as an overflow and silently appends a spurious blank page for.

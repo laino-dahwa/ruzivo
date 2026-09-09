@@ -53,6 +53,21 @@ describe("generateReportPdf", () => {
         expect(pageCount).toBeGreaterThan(1);
     });
 
+    it("omits the total line for listing exports that have no total, showing a record count instead", async () => {
+        // Learner/reference listings have no monetary total and aren't scoped
+        // to a reporting period, so those fields are optional.
+        const pdf = await generateReportPdf({
+            appName: "Ruzivo",
+            reportTitle: "Learners List",
+            generatedAtLabel: "01 September 2026",
+            columns,
+            rows: [{ a: "Row 1", b: "Row 1b" }, { a: "Row 2", b: "Row 2b" }],
+        });
+
+        expect(pdf.subarray(0, 4).toString("ascii")).toBe("%PDF");
+        expect(countPdfPages(pdf)).toBe(1);
+    });
+
     it("renders a clear empty-state message and still produces a valid single-page PDF", async () => {
         const pdf = await generateReportPdf({
             appName: "Ruzivo",

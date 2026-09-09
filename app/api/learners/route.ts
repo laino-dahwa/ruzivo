@@ -4,6 +4,10 @@ import { URLSearchParams } from "url";
 import { createLearners } from "@/repositories/learner/create/addLearner";
 import { updateLearners } from "@/repositories/learner/update/updateLearner";
 import { deleteLearner } from "@/repositories/learner/delete/deleteLearner";
+import { normalizeToArray, validationErrorBody } from "../../../lib/validation/bulk";
+import { validateLearners } from "../../../lib/validation/entities";
+import { isPdfFormat } from "../../../lib/reportRequest";
+import { tablePdfResponse } from "../../../lib/pdf/tablePdfResponse";
 
 export const runtime = "nodejs";
 
@@ -25,6 +29,31 @@ export async function GET(request:Request) {
         const  gender_name = getOptionalParam(searchParams,"gender_name")
         const  academic_year = getOptionalParam(searchParams,"academic_year")
         const response = await getLearners(learner_id,class_name,gender_name,academic_year)
+
+        // Exports exactly the rows the filters above produced, matching how
+        // the Reports section exports what the user is currently viewing.
+        if (isPdfFormat(searchParams)) {
+            return tablePdfResponse({
+                title: "Learners List",
+                filenameStem: "learners",
+                columns: [
+                    { key: "learner_id", label: "Learner ID", width: 80 },
+                    { key: "name", label: "Name", width: 150 },
+                    { key: "gender", label: "Gender", width: 80 },
+                    { key: "class", label: "Class", width: 95 },
+                    { key: "year", label: "Year", width: 90 },
+                ],
+                rows: response.map((row) => ({
+                    learner_id: row.learner_id,
+                    name: `${row.first_name} ${row.last_name}`,
+                    gender: row.gender_name ?? "",
+                    class: row.class_name ?? "",
+                    year: row.curent_year ?? "",
+                })),
+                emptyMessage: "No learners found.",
+            })
+        }
+
         return NextResponse.json(response)
 
     }catch(error){
@@ -48,10 +77,13 @@ export async function POST(request:Request){
     try{
         const body = await request.json()
 
-        if(!Array.isArray(body)){
+        // Accepts a single learner object or an array of them.
+        const records = normalizeToArray(body)
+
+        if(!records){
             return NextResponse.json(
                 {
-                    error:"Request body must be an array of learners"
+                    error:"Request body must be a learner object or an array of learners"
                 },
                 {
                     status: 400
@@ -59,7 +91,20 @@ export async function POST(request:Request){
             )
         }
 
-        const schools = await createLearners(body)
+        if(records.length === 0){
+            return NextResponse.json([], { status: 201 })
+        }
+
+        const errors = validateLearners(records)
+
+        if(errors.length > 0){
+            return NextResponse.json(
+                validationErrorBody(errors, "Learner"),
+                { status: 400 }
+            )
+        }
+
+        const schools = await createLearners(records as unknown as Parameters<typeof createLearners>[0])
 
         return NextResponse.json(
             schools,

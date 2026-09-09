@@ -69,17 +69,80 @@ describe("POST /api/schools/[school_id]/expenses (create)", () => {
     });
   });
 
-  it("rejects a non-array body with 400 and persists nothing", async () => {
+  it("accepts a single expense object (backward compatibility) and stores it", async () => {
     const request = makeRequest(`http://localhost/api/schools/${SCHOOL_A}/expenses`, {
       method: "POST",
-      body: JSON.stringify({ expense_category_id: String(categoryA), amount: 10, expense_date: "2026-08-01", description: "not an array" }),
+      body: JSON.stringify({ expense_category_id: String(categoryA), amount: 10, expense_date: "2026-08-01", description: "single object" }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(201);
+
+    const body = await readJson(response);
+    expect(body).toHaveLength(1);
+    expect(body[0].description).toBe("single object");
+  });
+
+  it("creates several expenses from one array in a single request", async () => {
+    const request = makeRequest(`http://localhost/api/schools/${SCHOOL_A}/expenses`, {
+      method: "POST",
+      body: JSON.stringify([
+        { expense_category_id: String(categoryA), amount: 11, expense_date: "2026-08-02", description: "bulk one" },
+        { expense_category_id: String(categoryA), amount: 12, expense_date: "2026-08-03", description: "bulk two" },
+        { expense_category_id: String(categoryA), amount: 13, expense_date: "2026-08-04", description: "bulk three" },
+      ]),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(201);
+
+    const body = await readJson(response);
+    expect(body).toHaveLength(3);
+
+    const stored = await query(
+      "SELECT description FROM expenses WHERE description = ANY($1::text[]) ORDER BY description",
+      [["bulk one", "bulk three", "bulk two"]]
+    );
+    expect(stored.rowCount).toBe(3);
+  });
+
+  it("rejects a body that is neither an object nor an array", async () => {
+    const request = makeRequest(`http://localhost/api/schools/${SCHOOL_A}/expenses`, {
+      method: "POST",
+      body: JSON.stringify("not a record"),
     });
 
     const response = await POST(request);
     expect(response.status).toBe(400);
   });
 
-  it("rejects a zero amount (DB CHECK constraint) and persists nothing", async () => {
+  it("rejects the whole batch when one record is invalid, and persists none of it", async () => {
+    const before = await query("SELECT count(*)::int FROM expenses WHERE expense_category_id = $1", [categoryA]);
+
+    const request = makeRequest(`http://localhost/api/schools/${SCHOOL_A}/expenses`, {
+      method: "POST",
+      body: JSON.stringify([
+        { expense_category_id: String(categoryA), amount: 10, expense_date: "2026-08-01", description: "valid" },
+        { expense_category_id: String(categoryA), amount: -5, expense_date: "2026-08-01", description: "invalid amount" },
+        { expense_category_id: String(categoryA), amount: 20, expense_date: "2026-08-01", description: "also valid" },
+      ]),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(400);
+
+    const body = await readJson(response);
+    // The failing record is identified by its position in the submitted array.
+    expect(body.details).toEqual([
+      { index: 1, field: "amount", message: "Amount must be greater than zero" },
+    ]);
+    expect(body.error).toContain("Expense 2");
+
+    const after = await query("SELECT count(*)::int FROM expenses WHERE expense_category_id = $1", [categoryA]);
+    expect(after.rows[0].count).toBe(before.rows[0].count);
+  });
+
+  it("rejects a zero amount with a field-level error and persists nothing", async () => {
     const before = await query("SELECT count(*)::int FROM expenses WHERE expense_category_id = $1", [categoryA]);
 
     const request = makeRequest(`http://localhost/api/schools/${SCHOOL_A}/expenses`, {
@@ -87,13 +150,13 @@ describe("POST /api/schools/[school_id]/expenses (create)", () => {
       body: JSON.stringify([{ expense_category_id: String(categoryA), amount: 0, expense_date: "2026-08-01", description: "zero amount" }]),
     });
     const response = await POST(request);
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(400);
 
     const after = await query("SELECT count(*)::int FROM expenses WHERE expense_category_id = $1", [categoryA]);
     expect(after.rows[0].count).toBe(before.rows[0].count);
   });
 
-  it("rejects a negative amount (DB CHECK constraint) and persists nothing", async () => {
+  it("rejects a negative amount with a field-level error and persists nothing", async () => {
     const before = await query("SELECT count(*)::int FROM expenses WHERE expense_category_id = $1", [categoryA]);
 
     const request = makeRequest(`http://localhost/api/schools/${SCHOOL_A}/expenses`, {
@@ -101,13 +164,13 @@ describe("POST /api/schools/[school_id]/expenses (create)", () => {
       body: JSON.stringify([{ expense_category_id: String(categoryA), amount: -50, expense_date: "2026-08-01", description: "negative amount" }]),
     });
     const response = await POST(request);
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(400);
 
     const after = await query("SELECT count(*)::int FROM expenses WHERE expense_category_id = $1", [categoryA]);
     expect(after.rows[0].count).toBe(before.rows[0].count);
   });
 
-  it("rejects a nonexistent expense_category_id (FK violation) and persists nothing", async () => {
+  it("rejects a nonexistent expense_category_id (FK violation, surfaced by the DB) and persists nothing", async () => {
     const request = makeRequest(`http://localhost/api/schools/${SCHOOL_A}/expenses`, {
       method: "POST",
       body: JSON.stringify([{ expense_category_id: "999999999", amount: 10, expense_date: "2026-08-01", description: "bad fk" }]),
@@ -122,7 +185,10 @@ describe("POST /api/schools/[school_id]/expenses (create)", () => {
       body: JSON.stringify([{ expense_category_id: String(categoryA), expense_date: "2026-08-01", description: "missing amount" }]),
     });
     const response = await POST(request);
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(400);
+
+    const body = await readJson(response);
+    expect(body.details).toEqual([{ index: 0, field: "amount", message: "Amount is required" }]);
   });
 });
 
@@ -161,6 +227,26 @@ describe("GET /api/schools/[school_id]/expenses (retrieve)", () => {
     const response = await GET(makeRequest(`http://localhost/api/schools/${SCHOOL_B}/expenses`), makeParams(SCHOOL_B));
     const body = await readJson(response);
     expect(body.every((row: { expense_category_id: number }) => row.expense_category_id !== categoryA)).toBe(true);
+  });
+});
+
+describe("GET /api/schools/[school_id]/expenses?format=pdf (export)", () => {
+  it("returns a valid PDF for the expenses table", async () => {
+    const response = await GET(makeRequest(`http://localhost/api/schools/${SCHOOL_A}/expenses?format=pdf`), makeParams(SCHOOL_A));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("application/pdf");
+    expect(response.headers.get("Content-Disposition")).toContain("expenses-");
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    expect(buffer.subarray(0, 4).toString("ascii")).toBe("%PDF");
+    expect(buffer.length).toBeGreaterThan(500);
+  });
+
+  it("produces a valid empty-state PDF for a school with no expenses", async () => {
+    const response = await GET(makeRequest(`http://localhost/api/schools/${SCHOOL_B}/expenses?format=pdf`), makeParams(SCHOOL_B));
+    expect(response.status).toBe(200);
+    const buffer = Buffer.from(await response.arrayBuffer());
+    expect(buffer.subarray(0, 4).toString("ascii")).toBe("%PDF");
   });
 });
 

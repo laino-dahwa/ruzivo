@@ -36,7 +36,7 @@ npm run electron:build:prod
 npx electron-builder --dir --win   # release/win-unpacked/Ruzivo.exe
 ```
 
-See [docs/desktop.md](docs/desktop.md) for the architecture (process model, platform abstraction, PostgreSQL provisioning), [docs/migrations.md](docs/migrations.md) for schema changes, [docs/releasing.md](docs/releasing.md) for cutting a release, and [docs/troubleshooting.md](docs/troubleshooting.md) for known packaging gotchas.
+See [docs/bulk-operations.md](docs/bulk-operations.md) for bulk creates and PDF export, [docs/desktop.md](docs/desktop.md) for the desktop architecture (process model, platform abstraction, PostgreSQL provisioning), [docs/migrations.md](docs/migrations.md) for schema changes, [docs/releasing.md](docs/releasing.md) for cutting a release, and [docs/troubleshooting.md](docs/troubleshooting.md) for known packaging gotchas.
 
 ## Project structure
 

@@ -17,11 +17,18 @@ export type OwingReportRow = {
     status: "Unpaid" | "Partially Paid";
 };
 
+// The amount owed is one fee, for one learner, in one period of one academic
+// year — income_limit is defined per income category, not per charge row.
+// Because each payment creates its own charge row, grouping by charge_id
+// counted the same fee once per instalment: a $100 fee settled as $60 + $40
+// reported $100 still outstanding. Grouping by the fee itself matches how
+// getBalances (the Owing page and dashboard) has always computed this, so
+// every screen now agrees on one number.
 const OWING_CTE = `
     WITH owing AS (
         SELECT
-            c.charge_id,
-            ((c.created_at AT TIME ZONE $3)::date)::text AS charge_date,
+            MIN(c.charge_id) AS charge_id,
+            ((MIN(c.created_at) AT TIME ZONE $3)::date)::text AS charge_date,
             l.learner_id,
             l.first_name,
             l.last_name,
@@ -44,9 +51,10 @@ const OWING_CTE = `
         WHERE l.school_id = $1
           AND ($2::date IS NULL OR (c.created_at AT TIME ZONE $3)::date = $2::date)
         GROUP BY
-            c.charge_id, l.learner_id, l.first_name, l.last_name,
-            ca.class_name, ic.income_name, ic.income_limit,
-            pp.period_name, ay.academic_year_name
+            l.learner_id, l.first_name, l.last_name,
+            ca.class_name, ic.income_category_id, ic.income_name, ic.income_limit,
+            pp.payment_period_id, pp.period_name,
+            ay.academic_year_id, ay.academic_year_name
         HAVING ic.income_limit - COALESCE(SUM(p.amount), 0) > 0
     )
 `;

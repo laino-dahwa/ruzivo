@@ -10,6 +10,7 @@ import { LearnerAutocomplete } from '../learners/learner-autocomplete';
 import { SectionHeading } from '../shared/section-heading';
 import { NoSchoolNotice } from '../shared/no-school-notice';
 import { ErrorNotice } from '../shared/error-notice';
+import { DownloadPdfButton } from '../shared/download-pdf-button';
 
 export function OwingView() {
   const { schoolId } = useCurrentSchoolId();
@@ -59,6 +60,20 @@ export function OwingView() {
                 {ref.paymentPeriods.data?.map((p) => <option key={p.payment_period_id} value={p.period_name}>{p.period_name}</option>)}
               </select>
             </div>
+          </div>
+
+          <div className="mt-4 flex justify-end">
+            <DownloadPdfButton
+              disabled={balancesQuery.isLoading}
+              onDownload={() => balancesApi.downloadPdf({
+                learner_id: filters.learner_id || null,
+                class_name: filters.class_name || null,
+                gender_name: filters.gender_name || null,
+                academic_year: filters.academic_year || null,
+                income_name: filters.income_name || null,
+                payment_period: filters.payment_period || null,
+              })}
+            />
           </div>
 
           <div className="mt-4 overflow-x-auto rounded-lg border border-border/60">

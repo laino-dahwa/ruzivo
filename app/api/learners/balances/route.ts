@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import {getBalances} from "../../../../repositories/payment/read/getBalances"
 import { URLSearchParams } from "url";
+import { isPdfFormat } from "../../../../lib/reportRequest";
+import { tablePdfResponse } from "../../../../lib/pdf/tablePdfResponse";
+import { formatCurrency } from "../../../../lib/currency";
 
 export const runtime = "nodejs";
 
@@ -24,6 +27,32 @@ export async function GET(request:Request) {
          const  income_name = getOptionalParam(searchParams,"income_name")
         const  payment_period = getOptionalParam(searchParams,"payment_period")
         const response = await getBalances(learner_id,class_name,gender_name,academic_year,income_name,payment_period)
+
+        if (isPdfFormat(searchParams)) {
+            const total = response.reduce((sum, row) => sum + Number(row.balance || 0), 0)
+            return tablePdfResponse({
+                title: "Outstanding Balances",
+                filenameStem: "outstanding-balances",
+                columns: [
+                    { key: "learner", label: "Learner", width: 140 },
+                    { key: "income", label: "Income", width: 110 },
+                    { key: "charged", label: "Charged", width: 85, align: "right" },
+                    { key: "paid", label: "Paid", width: 80, align: "right" },
+                    { key: "balance", label: "Balance", width: 90, align: "right" },
+                ],
+                rows: response.map((row) => ({
+                    learner: `${row.first_name} ${row.last_name}`,
+                    income: row.income_name ?? "",
+                    charged: formatCurrency(row.charged),
+                    paid: formatCurrency(row.paid),
+                    balance: formatCurrency(row.balance),
+                })),
+                totalLabel: "TOTAL OUTSTANDING",
+                totalValue: formatCurrency(total),
+                emptyMessage: "No outstanding balances found.",
+            })
+        }
+
         return NextResponse.json(response)
 
     }catch(error){

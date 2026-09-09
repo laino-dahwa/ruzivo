@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server";
 import {getPayments} from "../../../../repositories/payment/read/getPayments"
-import {createChargesWithPayments} from "../../../../repositories/payment/create/createNewPayment"
+import {createChargesWithPayments, PaymentLimitError} from "../../../../repositories/payment/create/createNewPayment"
 import {deleteCharge} from "../../../../repositories/payment/delete/delete_payment"
 import { URLSearchParams } from "url";
+import { normalizeToArray, validationErrorBody } from "../../../../lib/validation/bulk";
+import { validatePayments } from "../../../../lib/validation/entities";
+import { isPdfFormat } from "../../../../lib/reportRequest";
+import { tablePdfResponse } from "../../../../lib/pdf/tablePdfResponse";
+import { formatCurrency } from "../../../../lib/currency";
 
 export const runtime = "nodejs";
 
@@ -27,6 +32,32 @@ export async function GET(request:Request) {
         const  payment_period = getOptionalParam(searchParams,"payment_period")
         const  method_name = getOptionalParam(searchParams,"method_name")
         const response = await getPayments(learner_id,class_name,gender_name,academic_year,income_name,payment_period,method_name)
+
+        if (isPdfFormat(searchParams)) {
+            const total = response.reduce((sum, row) => sum + Number(row.amount || 0), 0)
+            return tablePdfResponse({
+                title: "Payments",
+                filenameStem: "payments",
+                columns: [
+                    { key: "learner", label: "Learner", width: 130 },
+                    { key: "income", label: "Income", width: 100 },
+                    { key: "period", label: "Period", width: 90 },
+                    { key: "method", label: "Method", width: 85 },
+                    { key: "amount", label: "Amount", width: 90, align: "right" },
+                ],
+                rows: response.map((row) => ({
+                    learner: `${row.first_name} ${row.last_name}`,
+                    income: row.income_name ?? "",
+                    period: row.period_name ?? "",
+                    method: row.method_name ?? "",
+                    amount: formatCurrency(row.amount),
+                })),
+                totalLabel: "TOTAL PAYMENTS",
+                totalValue: formatCurrency(total),
+                emptyMessage: "No payments found.",
+            })
+        }
+
         return NextResponse.json(response)
 
     }catch(error){
@@ -52,10 +83,13 @@ export async function POST(request:Request){
     try{
         const body = await request.json()
 
-        if(!body){
+        // Accepts a single payment object or an array of them.
+        const records = normalizeToArray(body)
+
+        if(!records){
             return NextResponse.json(
                 {
-                    error:"Request body must be an payment object"
+                    error:"Request body must be a payment object or an array of payments"
                 },
                 {
                     status: 400
@@ -63,7 +97,20 @@ export async function POST(request:Request){
             )
         }
 
-        const schools = await createChargesWithPayments(body)
+        if(records.length === 0){
+            return NextResponse.json([], { status: 201 })
+        }
+
+        const errors = validatePayments(records)
+
+        if(errors.length > 0){
+            return NextResponse.json(
+                validationErrorBody(errors, "Payment"),
+                { status: 400 }
+            )
+        }
+
+        const schools = await createChargesWithPayments(records as unknown as Parameters<typeof createChargesWithPayments>[0])
 
         return NextResponse.json(
             schools,
@@ -72,6 +119,19 @@ export async function POST(request:Request){
             }
         )
     }catch(error){
+        // Exceeding a learner's fee limit is a rejected request, not a server
+        // fault — answer with the same 400 shape as the other validation
+        // failures so the client surfaces the reason to the user.
+        if (error instanceof PaymentLimitError) {
+            return NextResponse.json(
+                {
+                    error: error.violations[0].message,
+                    details: error.violations,
+                },
+                { status: 400 }
+            )
+        }
+
         console.error("Payment Creation Failed :",error)
 
         return NextResponse.json(

@@ -12,7 +12,23 @@ import { SectionHeading } from '../shared/section-heading';
 import { NoSchoolNotice } from '../shared/no-school-notice';
 import { ErrorNotice } from '../shared/error-notice';
 import { ConfirmDialog } from '../shared/confirm-dialog';
+import { DownloadPdfButton } from '../shared/download-pdf-button';
 import { LearnerAutocomplete } from './learner-autocomplete';
+
+// One entry in the bulk form. Values stay as strings while being typed (the
+// same as the original single-learner form) and are converted on submit.
+type LearnerRow = {
+  first_name: string;
+  last_name: string;
+  gender_id: string;
+  date_of_birth: string;
+  class_category_id: string;
+  academic_year_id: string;
+};
+
+function emptyLearnerRow(): LearnerRow {
+  return { first_name: '', last_name: '', gender_id: '', date_of_birth: '', class_category_id: '', academic_year_id: '' };
+}
 
 export function LearnersView() {
   const { schoolId } = useCurrentSchoolId();
@@ -20,7 +36,7 @@ export function LearnersView() {
   const queryClient = useQueryClient();
   const ref = useSchoolReferenceData(schoolId);
   const [filters, setFilters] = useState({ learner_id: '', class_name: '', gender_name: '', academic_year: '' });
-  const [form, setForm] = useState({ first_name: '', last_name: '', gender_id: '', date_of_birth: '', class_category_id: '', academic_year_id: '' });
+  const [rows, setRows] = useState<LearnerRow[]>([emptyLearnerRow()]);
   const [pendingDelete, setPendingDelete] = useState<Learner | null>(null);
 
   const learnersQuery = useQuery({
@@ -34,13 +50,15 @@ export function LearnersView() {
   });
 
   const createLearner = useMutation({
-    mutationFn: (input: CreateLearnerInput) => learnersApi.create([input]),
-    onSuccess: () => {
-      toast({ title: 'Learner added' });
-      setForm({ first_name: '', last_name: '', gender_id: '', date_of_birth: '', class_category_id: '', academic_year_id: '' });
+    mutationFn: (inputs: CreateLearnerInput[]) => learnersApi.create(inputs),
+    onSuccess: (_result, inputs) => {
+      toast({ title: inputs.length === 1 ? 'Learner added' : `${inputs.length} learners added` });
+      // Reset only on success — a failed submission keeps every row so the
+      // user can fix the problem instead of retyping the whole batch.
+      setRows([emptyLearnerRow()]);
       queryClient.invalidateQueries({ queryKey: ['learners'] });
     },
-    onError: (error) => toast({ title: 'Could not add learner', description: (error as Error).message, variant: 'destructive' }),
+    onError: (error) => toast({ title: 'Could not add learners', description: (error as Error).message, variant: 'destructive' }),
   });
 
   const deleteLearner = useMutation({
@@ -53,18 +71,27 @@ export function LearnersView() {
     onError: (error) => toast({ title: 'Could not delete learner', description: (error as Error).message, variant: 'destructive' }),
   });
 
+  const updateRow = (index: number, patch: Partial<LearnerRow>) =>
+    setRows((current) => current.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+
+  const addRow = () => setRows((current) => [...current, emptyLearnerRow()]);
+
+  const removeRow = (index: number) => setRows((current) => current.filter((_, i) => i !== index));
+
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (!schoolId) return;
-    createLearner.mutate({
+    // Every row is sent as one array in a single request, and written by the
+    // API in a single transaction.
+    createLearner.mutate(rows.map((row) => ({
       school_id: schoolId,
-      first_name: form.first_name,
-      last_name: form.last_name,
-      gender_id: Number(form.gender_id),
-      date_of_birth: form.date_of_birth,
-      class_category_id: Number(form.class_category_id),
-      academic_year_id: Number(form.academic_year_id),
-    });
+      first_name: row.first_name,
+      last_name: row.last_name,
+      gender_id: Number(row.gender_id),
+      date_of_birth: row.date_of_birth,
+      class_category_id: Number(row.class_category_id),
+      academic_year_id: Number(row.academic_year_id),
+    })));
   };
 
   return (
@@ -73,24 +100,46 @@ export function LearnersView() {
       {!schoolId ? <NoSchoolNotice /> : (
         <>
           <div className="rounded-2xl border border-border/80 bg-card p-5">
-            <h3 className="text-sm font-semibold">Add a learner</h3>
-            <form onSubmit={submit} className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <input required placeholder="First name" value={form.first_name} onChange={(e) => setForm((f) => ({ ...f, first_name: e.target.value }))} className="field" />
-              <input required placeholder="Last name" value={form.last_name} onChange={(e) => setForm((f) => ({ ...f, last_name: e.target.value }))} className="field" />
-              <input required type="date" value={form.date_of_birth} onChange={(e) => setForm((f) => ({ ...f, date_of_birth: e.target.value }))} className="field" />
-              <select required value={form.gender_id} onChange={(e) => setForm((f) => ({ ...f, gender_id: e.target.value }))} className="field">
-                <option value="">Gender…</option>
-                {ref.genders.data?.map((g) => <option key={g.gender_id} value={g.gender_id}>{g.gender_name}</option>)}
-              </select>
-              <select required value={form.class_category_id} onChange={(e) => setForm((f) => ({ ...f, class_category_id: e.target.value }))} className="field">
-                <option value="">Class…</option>
-                {ref.classCategories.data?.map((c) => <option key={c.class_category_id} value={c.class_category_id}>{c.class_name}</option>)}
-              </select>
-              <select required value={form.academic_year_id} onChange={(e) => setForm((f) => ({ ...f, academic_year_id: e.target.value }))} className="field">
-                <option value="">Academic year…</option>
-                {ref.academicYears.data?.map((a) => <option key={a.academic_year_id} value={a.academic_year_id}>{a.academic_year_name}</option>)}
-              </select>
-              <button type="submit" disabled={createLearner.isPending} className="button-lift flex h-10 items-center justify-center gap-2 rounded-lg bg-primary text-xs font-semibold text-primary-foreground disabled:opacity-60 sm:col-span-2 lg:col-span-3"><Plus size={15} />{createLearner.isPending ? 'Saving…' : 'Add learner'}</button>
+            <h3 className="text-sm font-semibold">{rows.length === 1 ? 'Add a learner' : `Add ${rows.length} learners`}</h3>
+            <form onSubmit={submit} className="mt-3 space-y-3">
+              {rows.map((row, index) => (
+                <div key={index} className="space-y-2">
+                  {rows.length > 1 && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Learner {index + 1}</span>
+                      <button
+                        type="button"
+                        title="Remove this learner"
+                        onClick={() => removeRow(index)}
+                        className="rounded-md p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  )}
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    <input required placeholder="First name" value={row.first_name} onChange={(e) => updateRow(index, { first_name: e.target.value })} className="field" />
+                    <input required placeholder="Last name" value={row.last_name} onChange={(e) => updateRow(index, { last_name: e.target.value })} className="field" />
+                    <input required type="date" value={row.date_of_birth} onChange={(e) => updateRow(index, { date_of_birth: e.target.value })} className="field" />
+                    <select required value={row.gender_id} onChange={(e) => updateRow(index, { gender_id: e.target.value })} className="field">
+                      <option value="">Gender…</option>
+                      {ref.genders.data?.map((g) => <option key={g.gender_id} value={g.gender_id}>{g.gender_name}</option>)}
+                    </select>
+                    <select required value={row.class_category_id} onChange={(e) => updateRow(index, { class_category_id: e.target.value })} className="field">
+                      <option value="">Class…</option>
+                      {ref.classCategories.data?.map((c) => <option key={c.class_category_id} value={c.class_category_id}>{c.class_name}</option>)}
+                    </select>
+                    <select required value={row.academic_year_id} onChange={(e) => updateRow(index, { academic_year_id: e.target.value })} className="field">
+                      <option value="">Academic year…</option>
+                      {ref.academicYears.data?.map((a) => <option key={a.academic_year_id} value={a.academic_year_id}>{a.academic_year_name}</option>)}
+                    </select>
+                  </div>
+                </div>
+              ))}
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <button type="button" onClick={addRow} className="button-lift flex h-10 items-center justify-center gap-2 rounded-lg border border-border bg-background text-xs font-semibold text-foreground hover:border-primary/50" data-testid="button-add-learner-row"><Plus size={15} />Add another</button>
+                <button type="submit" disabled={createLearner.isPending} className="button-lift flex h-10 items-center justify-center gap-2 rounded-lg bg-primary text-xs font-semibold text-primary-foreground disabled:opacity-60 lg:col-span-2"><Plus size={15} />{createLearner.isPending ? 'Saving…' : rows.length === 1 ? 'Add learner' : `Add ${rows.length} learners`}</button>
+              </div>
             </form>
             {(!ref.genders.data?.length || !ref.classCategories.data?.length || !ref.academicYears.data?.length) && (
               <p className="mt-3 text-xs text-muted-foreground">Add at least one gender, class category and academic year in School setup before adding learners.</p>
@@ -104,6 +153,17 @@ export function LearnersView() {
               <div><label className="mb-1 block text-[10px] font-semibold text-muted-foreground">Class</label><input value={filters.class_name} onChange={(e) => setFilters((f) => ({ ...f, class_name: e.target.value }))} placeholder="e.g. Grade 4" className="field h-9 w-36 text-xs" /></div>
               <div><label className="mb-1 block text-[10px] font-semibold text-muted-foreground">Gender</label><input value={filters.gender_name} onChange={(e) => setFilters((f) => ({ ...f, gender_name: e.target.value }))} placeholder="e.g. Female" className="field h-9 w-36 text-xs" /></div>
               <div><label className="mb-1 block text-[10px] font-semibold text-muted-foreground">Academic year</label><input value={filters.academic_year} onChange={(e) => setFilters((f) => ({ ...f, academic_year: e.target.value }))} placeholder="e.g. 2026" className="field h-9 w-36 text-xs" /></div>
+              <div className="ml-auto">
+                <DownloadPdfButton
+                  disabled={learnersQuery.isLoading}
+                  onDownload={() => learnersApi.downloadPdf({
+                    learner_id: filters.learner_id || null,
+                    class_name: filters.class_name || null,
+                    gender_name: filters.gender_name || null,
+                    academic_year: filters.academic_year || null,
+                  })}
+                />
+              </div>
             </div>
             <div className="mt-4 overflow-x-auto rounded-lg border border-border/60">
               <table className="w-full text-left text-xs">

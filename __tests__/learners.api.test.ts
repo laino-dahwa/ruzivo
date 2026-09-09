@@ -91,13 +91,88 @@ describe("POST /api/learners (create)", () => {
     expect(enrolmentRow.rows[0]).toMatchObject({ class_category_id: String(classA), academic_year_id: String(yearA) });
   });
 
-  it("rejects a non-array body with 400 and persists nothing", async () => {
+  it("accepts a single learner object (backward compatibility) and stores it", async () => {
     const request = makeRequest("http://localhost/api/learners", {
       method: "POST",
       body: JSON.stringify(makeLearnerInput()),
     });
     const response = await POST(request);
+    expect(response.status).toBe(201);
+
+    const body = await readJson(response);
+    expect(body).toHaveLength(1);
+
+    const dbRow = await query("SELECT learner_id FROM learners WHERE learner_id = $1", [body[0].learner_id]);
+    expect(dbRow.rowCount).toBe(1);
+  });
+
+  it("creates several learners from one array in a single request", async () => {
+    const request = makeRequest("http://localhost/api/learners", {
+      method: "POST",
+      body: JSON.stringify([
+        makeLearnerInput({ first_name: "Bulk", last_name: "One" }),
+        makeLearnerInput({ first_name: "Bulk", last_name: "Two" }),
+        makeLearnerInput({ first_name: "Bulk", last_name: "Three" }),
+      ]),
+    });
+    const response = await POST(request);
+    expect(response.status).toBe(201);
+
+    const body = await readJson(response);
+    expect(body).toHaveLength(3);
+
+    const ids = body.map((row: { learner_id: string }) => row.learner_id);
+    // Distinct generated ids, and an enrolment row created for each learner.
+    expect(new Set(ids).size).toBe(3);
+    const enrolments = await query("SELECT learner_id FROM enrolments WHERE learner_id = ANY($1::text[])", [ids]);
+    expect(enrolments.rowCount).toBe(3);
+  });
+
+  it("rejects the whole batch when one learner is invalid, and persists none of it", async () => {
+    const before = await query("SELECT count(*)::int FROM learners WHERE school_id = $1", [SCHOOL_A]);
+
+    const request = makeRequest("http://localhost/api/learners", {
+      method: "POST",
+      body: JSON.stringify([
+        makeLearnerInput({ first_name: "Valid", last_name: "Record" }),
+        makeLearnerInput({ first_name: "", last_name: "Missing First Name" }),
+      ]),
+    });
+    const response = await POST(request);
     expect(response.status).toBe(400);
+
+    const body = await readJson(response);
+    expect(body.details).toEqual([{ index: 1, field: "first_name", message: "First name is required" }]);
+    expect(body.error).toContain("Learner 2");
+
+    const after = await query("SELECT count(*)::int FROM learners WHERE school_id = $1", [SCHOOL_A]);
+    expect(after.rows[0].count).toBe(before.rows[0].count);
+  });
+
+  it("rejects a body that is neither an object nor an array", async () => {
+    const response = await POST(makeRequest("http://localhost/api/learners", { method: "POST", body: JSON.stringify(42) }));
+    expect(response.status).toBe(400);
+  });
+});
+
+describe("GET /api/learners?format=pdf (export)", () => {
+  it("returns a valid PDF for the learners table", async () => {
+    const response = await GET(makeRequest("http://localhost/api/learners?format=pdf"));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("application/pdf");
+    expect(response.headers.get("Content-Disposition")).toContain("learners-");
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    expect(buffer.subarray(0, 4).toString("ascii")).toBe("%PDF");
+    expect(buffer.length).toBeGreaterThan(500);
+  });
+
+  it("exports the filtered rows, not the whole table", async () => {
+    // A filter that matches nothing must still produce a valid (empty-state) PDF.
+    const response = await GET(makeRequest("http://localhost/api/learners?learner_id=NOSUCHID&format=pdf"));
+    expect(response.status).toBe(200);
+    const buffer = Buffer.from(await response.arrayBuffer());
+    expect(buffer.subarray(0, 4).toString("ascii")).toBe("%PDF");
   });
 });
 

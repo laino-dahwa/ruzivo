@@ -42,7 +42,11 @@ beforeAll(async () => {
   const [gender] = await createGender([{ school_id: SCHOOL, gender_name: "Test Gender P" }]);
   const [classCategory] = await createClassCategory([{ school_id: SCHOOL, class_name: "Test Class P" }]);
   const [academicYear] = await createAcademicYear([{ school_id: SCHOOL, academic_year_name: "Test Year P", start_date: "2026-01-01", end_date: "2026-12-31" }]);
-  const [incomeCategory] = await createIncomeCategory([{ school_id: SCHOOL, income_name: "Test Fee", income_limit: "500" }]);
+  // Deliberately generous: this suite exercises payment CRUD and bulk
+  // mechanics, and its cases accumulate well past a realistic term fee. The
+  // per-period limit enforcement itself is covered in payment-limits.test.ts,
+  // so the limit here only needs to stay out of the way.
+  const [incomeCategory] = await createIncomeCategory([{ school_id: SCHOOL, income_name: "Test Fee", income_limit: "1000000" }]);
   const [paymentPeriod] = await createPaymentPeriod([{ school_id: SCHOOL, period_name: "Test Term" }]);
   const [paymentMethod] = await createPaymentMethod([{ school_id: SCHOOL, method_name: "Test Cash" }]);
 
@@ -117,6 +121,145 @@ describe("POST /api/learners/payments (record a payment)", () => {
     const dbPayment = await query("SELECT amount, payment_method_id FROM payments WHERE payment_id = $1", [payment.payment_id]);
     expect(Number(dbPayment.rows[0].amount)).toBe(120);
     expect(dbPayment.rows[0].payment_method_id).toBe(String(paymentMethodId));
+  });
+
+  it("records several payments for the SAME learner in one request", async () => {
+    // One learner paying towards several fees: one input object whose
+    // income_categories array carries a line per fee.
+    const response = await POST(makeRequest("http://localhost/api/learners/payments", {
+      method: "POST",
+      body: JSON.stringify({
+        learner_id: learnerId,
+        enrolment_id: enrolmentId,
+        payment_period_id: paymentPeriodId,
+        academic_year_id: yearId,
+        payment_method_id: paymentMethodId,
+        income_categories: [
+          { income_category_id: incomeCategoryId, amount: 40 },
+          { income_category_id: incomeCategoryId, amount: 60 },
+          { income_category_id: incomeCategoryId, amount: 80 },
+        ],
+      }),
+    }));
+    expect(response.status).toBe(201);
+
+    const body = await readJson(response);
+    expect(body).toHaveLength(3);
+
+    // Every line is its own charge + payment + allocation, all for one learner.
+    expect(body.every((entry: { charge: { learner_id: string } }) => entry.charge.learner_id === learnerId)).toBe(true);
+    const chargeIds = body.map((entry: { charge: { charge_id: number } }) => entry.charge.charge_id);
+    expect(new Set(chargeIds).size).toBe(3);
+
+    const amounts = body.map((entry: { payment: { amount: string } }) => Number(entry.payment.amount)).sort((a: number, b: number) => a - b);
+    expect(amounts).toEqual([40, 60, 80]);
+
+    const allocations = await query("SELECT charge_id FROM payment_allocations WHERE charge_id = ANY($1::bigint[])", [chargeIds]);
+    expect(allocations.rowCount).toBe(3);
+  });
+
+  it("records payments for several learners, each with several lines, in one request", async () => {
+    const before = await query("SELECT count(*)::int FROM charges WHERE learner_id = $1", [learnerId]);
+
+    const response = await POST(makeRequest("http://localhost/api/learners/payments", {
+      method: "POST",
+      body: JSON.stringify([
+        { ...makePaymentInput(10), income_categories: [
+          { income_category_id: incomeCategoryId, amount: 10 },
+          { income_category_id: incomeCategoryId, amount: 15 },
+        ] },
+        { ...makePaymentInput(20), income_categories: [
+          { income_category_id: incomeCategoryId, amount: 20 },
+        ] },
+      ]),
+    }));
+    expect(response.status).toBe(201);
+
+    // 2 learners' worth of input, 3 payment records in total.
+    const body = await readJson(response);
+    expect(body).toHaveLength(3);
+
+    const after = await query("SELECT count(*)::int FROM charges WHERE learner_id = $1", [learnerId]);
+    expect(after.rows[0].count).toBe(before.rows[0].count + 3);
+  });
+
+  it("names the failing line when one learner has several payment lines", async () => {
+    const response = await POST(makeRequest("http://localhost/api/learners/payments", {
+      method: "POST",
+      body: JSON.stringify({
+        ...makePaymentInput(10),
+        income_categories: [
+          { income_category_id: incomeCategoryId, amount: 10 },
+          { income_category_id: incomeCategoryId, amount: 0 },
+        ],
+      }),
+    }));
+    expect(response.status).toBe(400);
+
+    const body = await readJson(response);
+    expect(body.details).toEqual([
+      { index: 0, field: "amount", message: "Payment line 2: Amount must be greater than zero" },
+    ]);
+  });
+
+  it("records several payments from one array in a single request", async () => {
+    const response = await POST(makeRequest("http://localhost/api/learners/payments", {
+      method: "POST",
+      body: JSON.stringify([makePaymentInput(10), makePaymentInput(20), makePaymentInput(30)]),
+    }));
+    expect(response.status).toBe(201);
+
+    const body = await readJson(response);
+    expect(body).toHaveLength(3);
+
+    const amounts = body.map((entry: { payment: { amount: string } }) => Number(entry.payment.amount)).sort((a: number, b: number) => a - b);
+    expect(amounts).toEqual([10, 20, 30]);
+
+    // Each payment must have its own charge and allocation.
+    const chargeIds = body.map((entry: { charge: { charge_id: number } }) => entry.charge.charge_id);
+    expect(new Set(chargeIds).size).toBe(3);
+
+    const allocations = await query("SELECT charge_id FROM payment_allocations WHERE charge_id = ANY($1::bigint[])", [chargeIds]);
+    expect(allocations.rowCount).toBe(3);
+  });
+
+  it("rejects the whole batch when one payment is invalid, and persists none of it", async () => {
+    const before = await query("SELECT count(*)::int FROM charges WHERE learner_id = $1", [learnerId]);
+
+    const response = await POST(makeRequest("http://localhost/api/learners/payments", {
+      method: "POST",
+      body: JSON.stringify([makePaymentInput(50), makePaymentInput(-5)]),
+    }));
+    expect(response.status).toBe(400);
+
+    const body = await readJson(response);
+    expect(body.details).toEqual([{ index: 1, field: "amount", message: "Amount must be greater than zero" }]);
+    expect(body.error).toContain("Payment 2");
+
+    // Nothing from the valid record survives either — the batch is atomic.
+    const after = await query("SELECT count(*)::int FROM charges WHERE learner_id = $1", [learnerId]);
+    expect(after.rows[0].count).toBe(before.rows[0].count);
+  });
+
+  it("exports the payments table as a valid PDF", async () => {
+    const response = await GET(makeRequest("http://localhost/api/learners/payments?format=pdf"));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("application/pdf");
+    expect(response.headers.get("Content-Disposition")).toContain("payments-");
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    expect(buffer.subarray(0, 4).toString("ascii")).toBe("%PDF");
+    expect(buffer.length).toBeGreaterThan(500);
+  });
+
+  it("exports the outstanding balances table as a valid PDF", async () => {
+    const response = await GET_BALANCES(makeRequest("http://localhost/api/learners/balances?format=pdf"));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("application/pdf");
+    expect(response.headers.get("Content-Disposition")).toContain("outstanding-balances-");
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    expect(buffer.subarray(0, 4).toString("ascii")).toBe("%PDF");
   });
 
   it("rejects a request with an empty body and persists nothing", async () => {

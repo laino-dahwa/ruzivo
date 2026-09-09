@@ -6,7 +6,7 @@ import { Plus, Trash2 } from 'lucide-react';
 import { useToast } from '../../app/components/hooks/use-toast';
 import { useCurrentSchoolId } from '../../lib/client/current-school-id';
 import { formatCurrency } from '../../lib/currency';
-import { paymentsApi } from '../../services/payments';
+import { balancesApi, paymentsApi } from '../../services/payments';
 import type { CreateChargesWithPaymentsInput, Payment } from '../../types/payment';
 import { useSchoolReferenceData } from '../reference-data/use-school-reference-data';
 import { LearnerAutocomplete } from '../learners/learner-autocomplete';
@@ -14,6 +14,31 @@ import { SectionHeading } from '../shared/section-heading';
 import { NoSchoolNotice } from '../shared/no-school-notice';
 import { ErrorNotice } from '../shared/error-notice';
 import { ConfirmDialog } from '../shared/confirm-dialog';
+import { DownloadPdfButton } from '../shared/download-pdf-button';
+
+// One fee being paid: an income category and the amount paid towards it.
+// A learner block can hold several, which is what lets one learner pay for
+// several fees in a single submission.
+type PaymentLine = { income_category_id: string; amount: string };
+
+// One learner's payment. Mirrors CreateChargesWithPaymentsInput exactly: the
+// learner/period/method apply to the whole block, and each line becomes its
+// own charge + payment + allocation.
+type PaymentBlock = {
+  learner_id: string;
+  enrolment_id: string;
+  payment_period_id: string;
+  payment_method_id: string;
+  lines: PaymentLine[];
+};
+
+function emptyPaymentLine(): PaymentLine {
+  return { income_category_id: '', amount: '' };
+}
+
+function emptyPaymentBlock(): PaymentBlock {
+  return { learner_id: '', enrolment_id: '', payment_period_id: '', payment_method_id: '', lines: [emptyPaymentLine()] };
+}
 
 export function PaymentsView() {
   const { schoolId } = useCurrentSchoolId();
@@ -29,8 +54,11 @@ export function PaymentsView() {
     payment_period: '',
     method_name: '',
   });
-  const [form, setForm] = useState({ learner_id: '', enrolment_id: '', payment_period_id: '', payment_method_id: '', income_category_id: '', amount: '' });
+  const [blocks, setBlocks] = useState<PaymentBlock[]>([emptyPaymentBlock()]);
   const [pendingDeletePayment, setPendingDeletePayment] = useState<Payment | null>(null);
+
+  // Every line across every learner is one payment record.
+  const totalPayments = blocks.reduce((count, block) => count + block.lines.length, 0);
 
   const paymentsQuery = useQuery({
     queryKey: ['payments', filters],
@@ -45,11 +73,66 @@ export function PaymentsView() {
     }),
   });
 
+  // What each learner has already paid, per fee and period. Reuses the same
+  // endpoint the Owing page uses, and is invalidated on every payment, so the
+  // remaining amounts shown here stay in step with the server.
+  const balancesQuery = useQuery({
+    queryKey: ['balances'],
+    queryFn: () => balancesApi.list(),
+    enabled: !!schoolId,
+  });
+
+  /**
+   * Limit / paid / remaining for one payment line, or null when the fee has
+   * no configured limit or the line isn't complete enough to price yet.
+   * Mirrors the server's rule exactly, including counting earlier lines in
+   * this same form so a bulk entry can't silently plan an overpayment.
+   */
+  const feeStatusFor = (block: PaymentBlock, blockIndex: number, lineIndex: number) => {
+    const line = block.lines[lineIndex];
+    if (!block.learner_id || !block.payment_period_id || !line.income_category_id) return null;
+
+    const income = ref.incomeCategories.data?.find((i) => String(i.income_category_id) === line.income_category_id);
+    const period = ref.paymentPeriods.data?.find((p) => String(p.payment_period_id) === block.payment_period_id);
+    if (!income || income.income_limit === null || income.income_limit === undefined || !period) return null;
+
+    const limit = Number(income.income_limit);
+    if (!Number.isFinite(limit)) return null;
+
+    const balanceRow = balancesQuery.data?.find((b) =>
+      b.learner_id === block.learner_id && b.income_name === income.income_name && b.period_name === period.period_name);
+    const paid = Number(balanceRow?.paid ?? 0);
+
+    // Amounts already entered on earlier lines of this form for the very same
+    // learner + fee + period.
+    let pending = 0;
+    blocks.forEach((otherBlock, otherBlockIndex) => {
+      otherBlock.lines.forEach((otherLine, otherLineIndex) => {
+        const isEarlier = otherBlockIndex < blockIndex || (otherBlockIndex === blockIndex && otherLineIndex < lineIndex);
+        if (!isEarlier) return;
+        if (otherBlock.learner_id !== block.learner_id) return;
+        if (otherBlock.payment_period_id !== block.payment_period_id) return;
+        if (otherLine.income_category_id !== line.income_category_id) return;
+        pending += Number(otherLine.amount) || 0;
+      });
+    });
+
+    return {
+      limit,
+      paid,
+      remaining: Math.max(limit - paid - pending, 0),
+      periodName: period.period_name,
+    };
+  };
+
   const recordPayment = useMutation({
-    mutationFn: (input: CreateChargesWithPaymentsInput) => paymentsApi.create(input),
-    onSuccess: () => {
-      toast({ title: 'Payment recorded' });
-      setForm({ learner_id: '', enrolment_id: '', payment_period_id: '', payment_method_id: '', income_category_id: '', amount: '' });
+    mutationFn: (inputs: CreateChargesWithPaymentsInput[]) => paymentsApi.create(inputs),
+    onSuccess: (_result, inputs) => {
+      const recorded = inputs.reduce((count, input) => count + input.income_categories.length, 0);
+      toast({ title: recorded === 1 ? 'Payment recorded' : `${recorded} payments recorded` });
+      // Reset only on success — a failed submission keeps every row so the
+      // user can fix the problem instead of retyping the batch.
+      setBlocks([emptyPaymentBlock()]);
       queryClient.invalidateQueries({ queryKey: ['payments'] });
       queryClient.invalidateQueries({ queryKey: ['balances'] });
     },
@@ -67,13 +150,43 @@ export function PaymentsView() {
     onError: (error) => toast({ title: 'Delete failed', description: (error as Error).message, variant: 'destructive' }),
   });
 
+  const updateBlock = (index: number, patch: Partial<PaymentBlock>) =>
+    setBlocks((current) => current.map((block, i) => (i === index ? { ...block, ...patch } : block)));
+
+  const updateLine = (blockIndex: number, lineIndex: number, patch: Partial<PaymentLine>) =>
+    setBlocks((current) => current.map((block, i) => (
+      i === blockIndex
+        ? { ...block, lines: block.lines.map((line, l) => (l === lineIndex ? { ...line, ...patch } : line)) }
+        : block
+    )));
+
+  const addBlock = () => setBlocks((current) => [...current, emptyPaymentBlock()]);
+
+  const removeBlock = (index: number) => setBlocks((current) => current.filter((_, i) => i !== index));
+
+  const addLine = (blockIndex: number) =>
+    setBlocks((current) => current.map((block, i) => (
+      i === blockIndex ? { ...block, lines: [...block.lines, emptyPaymentLine()] } : block
+    )));
+
+  const removeLine = (blockIndex: number, lineIndex: number) =>
+    setBlocks((current) => current.map((block, i) => (
+      i === blockIndex ? { ...block, lines: block.lines.filter((_, l) => l !== lineIndex) } : block
+    )));
+
   const submitPayment = (event: FormEvent) => {
     event.preventDefault();
     if (!schoolId) return;
-    if (!form.learner_id) {
-      toast({ title: 'Select a learner first', variant: 'destructive' });
+
+    const missingLearner = blocks.findIndex((block) => !block.learner_id);
+    if (missingLearner !== -1) {
+      toast({
+        title: blocks.length === 1 ? 'Select a learner first' : `Learner ${missingLearner + 1}: select a learner first`,
+        variant: 'destructive',
+      });
       return;
     }
+
     // Preserves the existing, pre-migration behavior: the first available
     // academic year record is used automatically rather than letting the
     // user choose one (there is no academic-year picker in this form).
@@ -82,15 +195,25 @@ export function PaymentsView() {
       toast({ title: 'Add an academic year first', variant: 'destructive' });
       return;
     }
-    recordPayment.mutate({
-      learner_id: form.learner_id,
-      enrolment_id: Number(form.enrolment_id),
-      payment_period_id: Number(form.payment_period_id),
+
+    // One request, one transaction: every line of every learner lands, or
+    // none does.
+    recordPayment.mutate(blocks.map((block) => ({
+      learner_id: block.learner_id,
+      enrolment_id: Number(block.enrolment_id),
+      payment_period_id: Number(block.payment_period_id),
       academic_year_id: academicYearId,
-      payment_method_id: Number(form.payment_method_id),
-      income_categories: [{ income_category_id: Number(form.income_category_id), amount: Number(form.amount) }],
-    });
+      payment_method_id: Number(block.payment_method_id),
+      income_categories: block.lines.map((line) => ({
+        income_category_id: Number(line.income_category_id),
+        amount: Number(line.amount),
+      })),
+    })));
   };
+
+  const submitLabel = recordPayment.isPending
+    ? 'Saving…'
+    : totalPayments === 1 ? 'Record payment' : `Record ${totalPayments} payments`;
 
   return (
     <>
@@ -98,27 +221,106 @@ export function PaymentsView() {
       {!schoolId ? <NoSchoolNotice /> : (
         <>
           <div className="rounded-2xl border border-border/80 bg-card p-5">
-            <h3 className="text-sm font-semibold">Record a payment</h3>
-            <form onSubmit={submitPayment} className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <div>
-                <LearnerAutocomplete placeholder="Search learner by name…" onSelect={(learner) => setForm((f) => ({ ...f, learner_id: learner?.learner_id ?? '', enrolment_id: learner ? String(learner.enrolment_id) : '' }))} />
-                {form.learner_id && <p className="mt-1 font-mono text-[10px] text-muted-foreground">Learner ID: {form.learner_id}</p>}
+            <h3 className="text-sm font-semibold">{totalPayments === 1 ? 'Record a payment' : `Record ${totalPayments} payments`}</h3>
+            <form onSubmit={submitPayment} className="mt-3 space-y-4">
+              {blocks.map((block, blockIndex) => (
+                <div key={blockIndex} className="space-y-2 rounded-xl border border-border/60 p-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      Learner {blockIndex + 1}
+                      {block.lines.length > 1 && ` · ${block.lines.length} payments`}
+                    </span>
+                    {blocks.length > 1 && (
+                      <button
+                        type="button"
+                        title="Remove this learner"
+                        onClick={() => removeBlock(blockIndex)}
+                        className="rounded-md p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <div>
+                      <LearnerAutocomplete placeholder="Search learner by name…" onSelect={(learner) => updateBlock(blockIndex, { learner_id: learner?.learner_id ?? '', enrolment_id: learner ? String(learner.enrolment_id) : '' })} />
+                      {block.learner_id && <p className="mt-1 font-mono text-[10px] text-muted-foreground">Learner ID: {block.learner_id}</p>}
+                    </div>
+                    <input required type="number" placeholder="Enrolment ID" readOnly value={block.enrolment_id} className="field bg-secondary/40" />
+                    <select required value={block.payment_period_id} onChange={(e) => updateBlock(blockIndex, { payment_period_id: e.target.value })} className="field">
+                      <option value="">Payment period…</option>
+                      {ref.paymentPeriods.data?.map((p) => <option key={p.payment_period_id} value={p.payment_period_id}>{p.period_name}</option>)}
+                    </select>
+                    <select required value={block.payment_method_id} onChange={(e) => updateBlock(blockIndex, { payment_method_id: e.target.value })} className="field">
+                      <option value="">Payment method…</option>
+                      {ref.paymentMethods.data?.map((p) => <option key={p.payment_method_id} value={p.payment_method_id}>{p.method_name}</option>)}
+                    </select>
+                  </div>
+
+                  {/* Each line is a separate fee for this same learner. */}
+                  {block.lines.map((line, lineIndex) => (
+                    <div key={lineIndex} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                      <select required value={line.income_category_id} onChange={(e) => updateLine(blockIndex, lineIndex, { income_category_id: e.target.value })} className="field lg:col-span-2">
+                        <option value="">Income category…</option>
+                        {ref.incomeCategories.data?.map((i) => <option key={i.income_category_id} value={i.income_category_id}>{i.income_name}</option>)}
+                      </select>
+                      <div>
+                        {(() => {
+                          const status = feeStatusFor(block, blockIndex, lineIndex);
+                          return (
+                            <>
+                              <input
+                                required
+                                type="number"
+                                min="1"
+                                max={status ? status.remaining : undefined}
+                                placeholder="Amount"
+                                value={line.amount}
+                                onChange={(e) => updateLine(blockIndex, lineIndex, { amount: e.target.value })}
+                                className="field"
+                              />
+                              {status && (
+                                <p className={`mt-1 text-[10px] ${status.remaining === 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
+                                  {status.remaining === 0
+                                    ? `Fully paid for ${status.periodName} — limit ${formatCurrency(status.limit)}`
+                                    : `Limit ${formatCurrency(status.limit)} · Paid ${formatCurrency(status.paid)} · Max ${formatCurrency(status.remaining)}`}
+                                </p>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </div>
+                      <div className="flex items-center">
+                        {block.lines.length > 1 && (
+                          <button
+                            type="button"
+                            title="Remove this payment"
+                            onClick={() => removeLine(blockIndex, lineIndex)}
+                            className="rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+
+                  <button
+                    type="button"
+                    onClick={() => addLine(blockIndex)}
+                    data-testid={`button-add-payment-line-${blockIndex}`}
+                    className="button-lift flex h-8 items-center gap-1.5 whitespace-nowrap rounded-lg border border-border bg-background px-2.5 text-[11px] font-semibold text-foreground hover:border-primary/50"
+                  >
+                    <Plus size={13} />Another payment for this learner
+                  </button>
+                </div>
+              ))}
+
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <button type="button" onClick={addBlock} className="button-lift flex h-10 items-center justify-center gap-2 rounded-lg border border-border bg-background text-xs font-semibold text-foreground hover:border-primary/50" data-testid="button-add-payment-row"><Plus size={15} />Add another learner</button>
+                <button type="submit" disabled={recordPayment.isPending} className="button-lift flex h-10 items-center justify-center gap-2 rounded-lg bg-primary text-xs font-semibold text-primary-foreground disabled:opacity-60 lg:col-span-2"><Plus size={15} />{submitLabel}</button>
               </div>
-              <input required type="number" placeholder="Enrolment ID" readOnly value={form.enrolment_id} className="field bg-secondary/40" />
-              <select required value={form.payment_period_id} onChange={(e) => setForm((f) => ({ ...f, payment_period_id: e.target.value }))} className="field">
-                <option value="">Payment period…</option>
-                {ref.paymentPeriods.data?.map((p) => <option key={p.payment_period_id} value={p.payment_period_id}>{p.period_name}</option>)}
-              </select>
-              <select required value={form.payment_method_id} onChange={(e) => setForm((f) => ({ ...f, payment_method_id: e.target.value }))} className="field">
-                <option value="">Payment method…</option>
-                {ref.paymentMethods.data?.map((p) => <option key={p.payment_method_id} value={p.payment_method_id}>{p.method_name}</option>)}
-              </select>
-              <select required value={form.income_category_id} onChange={(e) => setForm((f) => ({ ...f, income_category_id: e.target.value }))} className="field">
-                <option value="">Income category…</option>
-                {ref.incomeCategories.data?.map((i) => <option key={i.income_category_id} value={i.income_category_id}>{i.income_name}</option>)}
-              </select>
-              <input required type="number" min="1" placeholder="Amount" value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} className="field" />
-              <button type="submit" disabled={recordPayment.isPending} className="button-lift flex h-10 items-center justify-center gap-2 rounded-lg bg-primary text-xs font-semibold text-primary-foreground disabled:opacity-60 sm:col-span-2 lg:col-span-3"><Plus size={15} />{recordPayment.isPending ? 'Saving…' : 'Record payment'}</button>
             </form>
             <p className="mt-2 text-[11px] text-muted-foreground">Uses the first available academic year record. Enrolment ID fills in automatically once a learner is selected.</p>
             <ErrorNotice error={recordPayment.error} />
@@ -150,6 +352,20 @@ export function PaymentsView() {
                   <option value="">All</option>
                   {ref.paymentMethods.data?.map((m) => <option key={m.payment_method_id} value={m.method_name}>{m.method_name}</option>)}
                 </select>
+              </div>
+              <div className="flex items-end">
+                <DownloadPdfButton
+                  disabled={paymentsQuery.isLoading}
+                  onDownload={() => paymentsApi.downloadPdf({
+                    learner_id: filters.learner_id || null,
+                    class_name: filters.class_name || null,
+                    gender_name: filters.gender_name || null,
+                    academic_year: filters.academic_year || null,
+                    income_name: filters.income_name || null,
+                    payment_period: filters.payment_period || null,
+                    method_name: filters.method_name || null,
+                  })}
+                />
               </div>
             </div>
 
