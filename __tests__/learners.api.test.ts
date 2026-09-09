@@ -80,7 +80,9 @@ describe("POST /api/learners (create)", () => {
 
     const body = await readJson(response);
     expect(body).toHaveLength(1);
-    expect(body[0].learner_id).toMatch(new RegExp(`^${SCHOOL_A}[A-Z0-9]{5}$`));
+    // school_id plus a 4-char suffix, kept within learner_id VARCHAR(8).
+    expect(body[0].learner_id).toMatch(new RegExp(`^${SCHOOL_A}[A-Z0-9]{4}$`));
+    expect(body[0].learner_id.length).toBeLessThanOrEqual(8);
 
     const dbRow = await query("SELECT first_name, last_name, gender_id FROM learners WHERE learner_id = $1", [body[0].learner_id]);
     expect(dbRow.rowCount).toBe(1);
@@ -147,6 +149,52 @@ describe("POST /api/learners (create)", () => {
 
     const after = await query("SELECT count(*)::int FROM learners WHERE school_id = $1", [SCHOOL_A]);
     expect(after.rows[0].count).toBe(before.rows[0].count);
+  });
+
+  it("accepts a blank-padded school_id (CHAR(4)) without overflowing the learner id", async () => {
+    // school_id is CHAR(4), so a value read back from the API arrives padded
+    // ("TLA "). Concatenating that padding into the generated learner id used
+    // to push it past learner_id VARCHAR(8) and fail the insert, which broke
+    // "Add learner" for anyone who had just created a school.
+    const request = makeRequest("http://localhost/api/learners", {
+      method: "POST",
+      body: JSON.stringify({ ...makeLearnerInput({ first_name: "Padded" }), school_id: `${SCHOOL_A} ` }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(201);
+
+    const body = await readJson(response);
+    expect(body[0].learner_id.length).toBeLessThanOrEqual(8);
+
+    const stored = await query("SELECT learner_id FROM learners WHERE learner_id = $1", [body[0].learner_id]);
+    expect(stored.rowCount).toBe(1);
+  });
+
+  it("creates learners for a 4-character school id without overflowing", async () => {
+    // school_id is CHAR(4), so 4-character ids are valid. With the old 5-char
+    // suffix these produced a 9-character learner_id and failed every time,
+    // meaning such a school could never hold learners.
+    const FOUR = "TL4A";
+    await createSchool([{ school_id: FOUR, school_name: "Four Char", school_type: "primary", school_address: "n/a", school_contact: "n/a", school_email: "four@test.local" }]);
+    const [g] = await createGender([{ school_id: FOUR, gender_name: "Male" }]);
+    const [c] = await createClassCategory([{ school_id: FOUR, class_name: "Grade 1" }]);
+    const [y] = await createAcademicYear([{ school_id: FOUR, academic_year_name: "2026", start_date: "2026-01-01", end_date: "2026-12-31" }]);
+
+    try {
+      const response = await POST(makeRequest("http://localhost/api/learners", {
+        method: "POST",
+        body: JSON.stringify({ school_id: FOUR, first_name: "Four", last_name: "Char", gender_id: g.gender_id, date_of_birth: "2015-01-01", class_category_id: c.class_category_id, academic_year_id: y.academic_year_id }),
+      }));
+      expect(response.status).toBe(201);
+
+      const body = await readJson(response);
+      expect(body[0].learner_id.length).toBe(8);
+    } finally {
+      await query("DELETE FROM enrolments WHERE learner_id IN (SELECT learner_id FROM learners WHERE school_id = $1)", [FOUR]);
+      await query("DELETE FROM learners WHERE school_id = $1", [FOUR]);
+      await query("DELETE FROM schools WHERE school_id = $1", [FOUR]);
+    }
   });
 
   it("rejects a body that is neither an object nor an array", async () => {

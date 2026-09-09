@@ -20,9 +20,8 @@ import { query } from "../lib/db";
 // Two disposable test schools so report school-scoping (cross-tenant
 // isolation) can be verified, plus a third empty school for the
 // no-records case. Everything created here is removed in afterAll.
-// Exactly 3 characters: learner_id generation appends a 5-char random suffix
-// to school_id and the learner_id column is VARCHAR(8), so a school_id longer
-// than 3 characters overflows it (see report's "Issues found" for detail).
+// learner_id is VARCHAR(8): school_id (up to 4 chars) plus a 4-char random
+// suffix, so any valid school_id fits.
 const SCHOOL_1 = "TR1";
 const SCHOOL_2 = "TR2";
 const SCHOOL_EMPTY = "TR3";

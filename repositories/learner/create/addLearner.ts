@@ -21,10 +21,17 @@ const ALPHANUMERIC =
 
 const MAX_RETRIES = 5;
 
+// learner_id is VARCHAR(8) and school_id is CHAR(4), so the suffix gets the
+// remaining 4 characters. A 5-character suffix overflowed the column for any
+// 4-character school id (e.g. "ZZ99"), which made those schools unable to
+// hold learners at all. 36^4 combinations per school, and a collision on the
+// primary key is retried below with fresh ids.
+const SUFFIX_LENGTH = 4;
+
 function generateLearnerId(schoolId: string): string {
   let suffix = "";
 
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < SUFFIX_LENGTH; i++) {
     suffix +=
       ALPHANUMERIC[randomInt(ALPHANUMERIC.length)];
   }
@@ -37,8 +44,12 @@ function prepareLearners(
 ): PreparedLearner[] {
   return learners.map((learner) => ({
     ...learner,
+    // school_id is CHAR(4), so anything read back from Postgres arrives
+    // blank-padded ("SSV "). Concatenating that padding into the learner id
+    // pushes it past learner_id's VARCHAR(8) and the insert fails, so the
+    // padding is stripped before the id is built.
     learner_id: generateLearnerId(
-      learner.school_id
+      learner.school_id.trim()
     ),
   }));
 }
