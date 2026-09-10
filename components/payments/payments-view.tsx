@@ -43,8 +43,8 @@ function emptyPaymentLine(): PaymentLine {
   return { income_category_id: '', amount: '' };
 }
 
-function emptyPaymentBlock(paymentPeriodId = ''): PaymentBlock {
-  return { learner_id: '', enrolment_id: '', payment_period_id: paymentPeriodId, payment_method_id: '', lines: [emptyPaymentLine()] };
+function emptyPaymentBlock(paymentPeriodId = '', paymentMethodId = ''): PaymentBlock {
+  return { learner_id: '', enrolment_id: '', payment_period_id: paymentPeriodId, payment_method_id: paymentMethodId, lines: [emptyPaymentLine()] };
 }
 
 export function PaymentsView() {
@@ -105,10 +105,24 @@ export function PaymentsView() {
     return match ? String(match.payment_period_id) : '';
   }, [ref.paymentPeriods.data]);
 
-  // The first block is built before the reference data arrives, so the default
-  // is filled in once it does. Guarded so a period the user deliberately
-  // cleared is not silently put back.
+  /**
+   * Cash is what most fees are handed over as, so it is preselected when the
+   * school has such a method. A school that names its methods differently
+   * matches nothing and is left to pick, as with the period above.
+   */
+  const cashMethodId = useMemo(() => {
+    const match = ref.paymentMethods.data?.find(
+      (method) => String(method.method_name ?? '').trim().toLowerCase() === 'cash',
+    );
+    return match ? String(match.payment_method_id) : '';
+  }, [ref.paymentMethods.data]);
+
+  // The first block is built before the reference data arrives, so the defaults
+  // are filled in once it does. Each is guarded separately — the two queries
+  // resolve independently — and only ever once, so a value the user
+  // deliberately cleared is not silently put back.
   const seededPeriod = useRef(false);
+  const seededMethod = useRef(false);
   useEffect(() => {
     if (seededPeriod.current || !currentPeriodId) return;
     seededPeriod.current = true;
@@ -116,6 +130,14 @@ export function PaymentsView() {
       block.payment_period_id ? block : { ...block, payment_period_id: currentPeriodId }
     )));
   }, [currentPeriodId]);
+
+  useEffect(() => {
+    if (seededMethod.current || !cashMethodId) return;
+    seededMethod.current = true;
+    setBlocks((current) => current.map((block) => (
+      block.payment_method_id ? block : { ...block, payment_method_id: cashMethodId }
+    )));
+  }, [cashMethodId]);
 
   const incomeOptions = useMemo(
     () => (ref.incomeCategories.data ?? []).map((income) => ({
@@ -214,7 +236,7 @@ export function PaymentsView() {
       setAddOpen(false);
       // Reset only on success — a failed submission keeps every row so the
       // user can fix the problem instead of retyping the batch.
-      setBlocks([emptyPaymentBlock(currentPeriodId)]);
+      setBlocks([emptyPaymentBlock(currentPeriodId, cashMethodId)]);
       queryClient.invalidateQueries({ queryKey: ['payments'] });
       queryClient.invalidateQueries({ queryKey: ['balances'] });
     },
@@ -242,7 +264,7 @@ export function PaymentsView() {
         : block
     )));
 
-  const addBlock = () => setBlocks((current) => [...current, emptyPaymentBlock(currentPeriodId)]);
+  const addBlock = () => setBlocks((current) => [...current, emptyPaymentBlock(currentPeriodId, cashMethodId)]);
 
   const removeBlock = (index: number) => setBlocks((current) => current.filter((_, i) => i !== index));
 
