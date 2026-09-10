@@ -515,17 +515,11 @@ export function PaymentsView() {
                     className="button-lift flex h-8 items-center gap-1.5 whitespace-nowrap rounded-lg border border-border bg-background px-2.5 text-[11px] font-semibold text-foreground hover:border-primary/50"
                   >
                     <Plus size={13} />Another payment for this learner
-                    <kbd className="ml-1 rounded border border-border bg-secondary px-1 font-sans text-[10px] text-muted-foreground">↓</kbd>
                   </button>
                 </div>
               ))}
 
               <ErrorNotice error={recordPayment.error} />
-              <p className="text-[10px] text-muted-foreground">
-                Shortcuts: <kbd className="font-sans">↓</kbd> add a payment · <kbd className="font-sans">↑</kbd> undo it ·{' '}
-                <kbd className="font-sans">→</kbd> add a learner · <kbd className="font-sans">←</kbd> undo it. Hold{' '}
-                <kbd className="font-sans">Alt</kbd> to use them while typing in a field.
-              </p>
               {/* Pinned to the bottom of the scroll area so the total and the
                   submit button stay reachable however many learners are open. */}
               <div className="sticky bottom-0 -mx-5 border-t border-border/60 bg-card px-5 pb-5 pt-3">
@@ -536,7 +530,7 @@ export function PaymentsView() {
                   <span className="text-base font-semibold tabular-nums" data-testid="payments-total">{formatCurrency(totalAmount)}</span>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  <button type="button" onClick={addBlock} className="button-lift flex h-10 items-center justify-center gap-2 rounded-lg border border-border bg-background text-xs font-semibold text-foreground hover:border-primary/50" data-testid="button-add-payment-row"><Plus size={15} />Add another learner<kbd className="ml-1 rounded border border-border bg-secondary px-1 font-sans text-[10px] text-muted-foreground">→</kbd></button>
+                  <button type="button" onClick={addBlock} className="button-lift flex h-10 items-center justify-center gap-2 rounded-lg border border-border bg-background text-xs font-semibold text-foreground hover:border-primary/50" data-testid="button-add-payment-row"><Plus size={15} />Add another learner</button>
                   <button type="submit" disabled={recordPayment.isPending} className="button-lift flex h-10 items-center justify-center gap-2 rounded-lg bg-primary text-xs font-semibold text-primary-foreground disabled:opacity-60 lg:col-span-2"><Plus size={15} />{submitLabel}</button>
                 </div>
               </div>
