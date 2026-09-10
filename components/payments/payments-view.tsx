@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2 } from 'lucide-react';
 import { useToast } from '../../app/components/hooks/use-toast';
@@ -289,6 +289,67 @@ export function PaymentsView() {
       i === blockIndex ? { ...block, lines: block.lines.filter((_, l) => l !== lineIndex) } : block
     )));
 
+  const formRef = useRef<HTMLFormElement>(null);
+
+  // Focus starts on the form itself so the shortcuts below work the moment the
+  // dialog opens, rather than only after something has been clicked.
+  useEffect(() => {
+    if (addOpen) formRef.current?.focus();
+  }, [addOpen]);
+
+  /**
+   * Arrow-key shortcuts for building up a batch without reaching for the mouse:
+   * down adds a fee line to the learner being worked on, up takes the last one
+   * back, right adds another learner, left takes the last one back.
+   *
+   * The arrows already belong to the controls inside this form — they step an
+   * amount up and down, move through a fee's options, and move the caret in a
+   * text box — so while focus is in one of those the shortcut stays out of the
+   * way and the control keeps the key. Holding Alt overrides that, which is
+   * what makes the shortcuts usable without leaving the field you are typing
+   * in. Both paths act on the last learner block, matching the order the form
+   * is filled in.
+   */
+  const handleShortcut = (event: KeyboardEvent<HTMLFormElement>) => {
+    if (!['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+
+    const target = event.target as HTMLElement | null;
+    const inControl = !!target?.closest('input, select, textarea, [contenteditable="true"]');
+    if (inControl && !event.altKey) return;
+
+    event.preventDefault();
+    const lastBlock = blocks.length - 1;
+    if (lastBlock < 0) return;
+
+    // A removal can take the focused button out of the tree with it, so focus
+    // returns to the form and the next arrow still lands.
+    const restoreFocus = () => formRef.current?.focus();
+
+    switch (event.key) {
+      case 'ArrowDown':
+        addLine(lastBlock);
+        break;
+      case 'ArrowUp': {
+        const lines = blocks[lastBlock].lines.length;
+        // Never below one line: a learner block with no fee cannot be paid.
+        if (lines > 1) {
+          removeLine(lastBlock, lines - 1);
+          restoreFocus();
+        }
+        break;
+      }
+      case 'ArrowRight':
+        addBlock();
+        break;
+      case 'ArrowLeft':
+        if (blocks.length > 1) {
+          removeBlock(lastBlock);
+          restoreFocus();
+        }
+        break;
+    }
+  };
+
   const submitPayment = (event: FormEvent) => {
     event.preventDefault();
     if (!schoolId) return;
@@ -357,7 +418,9 @@ export function PaymentsView() {
             description={`Recorded against ${currentAcademicYearName ?? 'the current academic year'}. Enrolment ID fills in automatically once a learner is selected.`}
             onClose={() => setAddOpen(false)}
           >
-            <form onSubmit={submitPayment} className="space-y-4">
+            {/* tabIndex lets the form hold focus itself, so an arrow pressed
+                before anything is clicked still reaches the handler. */}
+            <form ref={formRef} tabIndex={-1} onKeyDown={handleShortcut} onSubmit={submitPayment} className="space-y-4 outline-none">
               {blocks.map((block, blockIndex) => (
                 <div key={blockIndex} className="space-y-2 rounded-xl border border-border/60 p-3">
                   <div className="flex items-center justify-between">
@@ -452,11 +515,17 @@ export function PaymentsView() {
                     className="button-lift flex h-8 items-center gap-1.5 whitespace-nowrap rounded-lg border border-border bg-background px-2.5 text-[11px] font-semibold text-foreground hover:border-primary/50"
                   >
                     <Plus size={13} />Another payment for this learner
+                    <kbd className="ml-1 rounded border border-border bg-secondary px-1 font-sans text-[10px] text-muted-foreground">↓</kbd>
                   </button>
                 </div>
               ))}
 
               <ErrorNotice error={recordPayment.error} />
+              <p className="text-[10px] text-muted-foreground">
+                Shortcuts: <kbd className="font-sans">↓</kbd> add a payment · <kbd className="font-sans">↑</kbd> undo it ·{' '}
+                <kbd className="font-sans">→</kbd> add a learner · <kbd className="font-sans">←</kbd> undo it. Hold{' '}
+                <kbd className="font-sans">Alt</kbd> to use them while typing in a field.
+              </p>
               {/* Pinned to the bottom of the scroll area so the total and the
                   submit button stay reachable however many learners are open. */}
               <div className="sticky bottom-0 -mx-5 border-t border-border/60 bg-card px-5 pb-5 pt-3">
@@ -467,7 +536,7 @@ export function PaymentsView() {
                   <span className="text-base font-semibold tabular-nums" data-testid="payments-total">{formatCurrency(totalAmount)}</span>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  <button type="button" onClick={addBlock} className="button-lift flex h-10 items-center justify-center gap-2 rounded-lg border border-border bg-background text-xs font-semibold text-foreground hover:border-primary/50" data-testid="button-add-payment-row"><Plus size={15} />Add another learner</button>
+                  <button type="button" onClick={addBlock} className="button-lift flex h-10 items-center justify-center gap-2 rounded-lg border border-border bg-background text-xs font-semibold text-foreground hover:border-primary/50" data-testid="button-add-payment-row"><Plus size={15} />Add another learner<kbd className="ml-1 rounded border border-border bg-secondary px-1 font-sans text-[10px] text-muted-foreground">→</kbd></button>
                   <button type="submit" disabled={recordPayment.isPending} className="button-lift flex h-10 items-center justify-center gap-2 rounded-lg bg-primary text-xs font-semibold text-primary-foreground disabled:opacity-60 lg:col-span-2"><Plus size={15} />{submitLabel}</button>
                 </div>
               </div>
