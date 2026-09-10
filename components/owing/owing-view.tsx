@@ -33,6 +33,8 @@ export function OwingView() {
       academic_year: filters.academic_year || null,
       income_name: filters.income_name || null,
       payment_period: filters.payment_period || null,
+      // A settled fee is not outstanding, so it is left off this table.
+      only_outstanding: true,
     }),
   });
 
@@ -72,6 +74,7 @@ export function OwingView() {
                 academic_year: filters.academic_year || null,
                 income_name: filters.income_name || null,
                 payment_period: filters.payment_period || null,
+                only_outstanding: true,
               })}
             />
           </div>
@@ -83,7 +86,7 @@ export function OwingView() {
               </thead>
               <tbody className="divide-y divide-border/60">
                 {balancesQuery.isLoading && <tr><td className="px-3 py-3 text-muted-foreground" colSpan={5}>Loading…</td></tr>}
-                {!balancesQuery.isLoading && (balancesQuery.data?.length ?? 0) === 0 && <tr><td className="px-3 py-3 text-muted-foreground" colSpan={5}>No balances found</td></tr>}
+                {!balancesQuery.isLoading && (balancesQuery.data?.length ?? 0) === 0 && <tr><td className="px-3 py-3 text-muted-foreground" colSpan={5}>No outstanding balances</td></tr>}
                 {balancesQuery.data?.map((balance, index) => (
                   <tr key={index}>
                     <td className="px-3 py-2">{balance.first_name} {balance.last_name}</td>

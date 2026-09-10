@@ -26,7 +26,10 @@ export async function GET(request:Request) {
         const  academic_year = getOptionalParam(searchParams,"academic_year")
          const  income_name = getOptionalParam(searchParams,"income_name")
         const  payment_period = getOptionalParam(searchParams,"payment_period")
-        const response = await getBalances(learner_id,class_name,gender_name,academic_year,income_name,payment_period)
+        // Settled rows are dropped only when asked for, so the JSON the
+        // Record Payment form reads still carries every fee.
+        const only_outstanding = getOptionalParam(searchParams,"only_outstanding") === "true"
+        const response = await getBalances(learner_id,class_name,gender_name,academic_year,income_name,payment_period,only_outstanding)
 
         if (isPdfFormat(searchParams)) {
             const total = response.reduce((sum, row) => sum + Number(row.balance || 0), 0)

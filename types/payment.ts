@@ -34,6 +34,11 @@ export type PaymentFilters = {
   method_name?: string | null;
 };
 
+export type BalanceFilters = Omit<PaymentFilters, 'method_name'> & {
+  /** Hide rows whose balance is exactly zero. */
+  only_outstanding?: boolean;
+};
+
 export type CreateChargesWithPaymentsInput = {
   learner_id: string;
   enrolment_id: number;

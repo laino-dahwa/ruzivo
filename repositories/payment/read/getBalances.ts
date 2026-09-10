@@ -1,6 +1,18 @@
 import { query } from "../../../lib/db";
 
-export async function getBalances(learner_id:string|null,class_name:string|null,gender_name:string|null,academic_year:string|null,income_name:string|null,payment_period:string|null) {
+/**
+ * Balances per learner + fee + period + year.
+ *
+ * `only_outstanding` drops rows that are settled exactly. It is opt-in because
+ * the Record Payment form reads these same rows to show how much of a fee is
+ * already paid — a fully paid fee missing from the list would read there as
+ * "nothing paid yet" and invite a duplicate payment.
+ *
+ * Overpaid rows (a negative balance, which a lowered fee limit can produce
+ * after the fact) are deliberately kept: they are not settled, and hiding them
+ * would bury the discrepancy.
+ */
+export async function getBalances(learner_id:string|null,class_name:string|null,gender_name:string|null,academic_year:string|null,income_name:string|null,payment_period:string|null,only_outstanding:boolean = false) {
     const result = await query(`
         SELECT
             l.learner_id,
@@ -51,9 +63,11 @@ export async function getBalances(learner_id:string|null,class_name:string|null,
             ic.income_limit,
             pp.period_name,
             ay.academic_year_name
+        HAVING
+        ($7::boolean IS NOT TRUE OR ic.income_limit - COALESCE(SUM(p.amount), 0) <> 0)
         
         `,
-        [learner_id,class_name, gender_name, academic_year,income_name,payment_period]
+        [learner_id,class_name, gender_name, academic_year,income_name,payment_period,only_outstanding]
     );
     return result.rows;
 }
