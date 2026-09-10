@@ -66,6 +66,10 @@ export function ExpensesView() {
     onError: (error) => toast({ title: 'Could not delete expense', description: (error as Error).message, variant: 'destructive' }),
   });
 
+  // Shown live in the dialog footer so the batch total is visible before any
+  // of it is written. A blank or half-typed amount contributes nothing.
+  const totalAmount = rows.reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
+
   const updateRow = (index: number, patch: Partial<ExpenseRow>) =>
     setRows((current) => current.map((row, i) => (i === index ? { ...row, ...patch } : row)));
 
@@ -121,12 +125,22 @@ export function ExpensesView() {
                   </div>
                 </div>
               ))}
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <button type="button" onClick={addRow} className="button-lift flex h-10 items-center justify-center gap-2 rounded-lg border border-border bg-background text-xs font-semibold text-foreground hover:border-primary/50" data-testid="button-add-expense-row"><Plus size={15} />Add another</button>
-                <button type="submit" disabled={createExpense.isPending} className="button-lift flex h-10 items-center justify-center gap-2 rounded-lg bg-primary text-xs font-semibold text-primary-foreground disabled:opacity-60 sm:col-span-1 lg:col-span-3"><Plus size={15} />{createExpense.isPending ? 'Saving…' : rows.length === 1 ? 'Log expense' : `Log ${rows.length} expenses`}</button>
+              <ErrorNotice error={createExpense.error} />
+              {/* Pinned to the bottom of the scroll area so the total and the
+                  submit button stay reachable however many rows are open. */}
+              <div className="sticky bottom-0 -mx-5 border-t border-border/60 bg-card px-5 pb-5 pt-3">
+                <div className="mb-3 flex items-baseline justify-between gap-3">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    {rows.length === 1 ? 'Total' : `Total · ${rows.length} expenses`}
+                  </span>
+                  <span className="text-base font-semibold tabular-nums" data-testid="expenses-total">{formatCurrency(totalAmount)}</span>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <button type="button" onClick={addRow} className="button-lift flex h-10 items-center justify-center gap-2 rounded-lg border border-border bg-background text-xs font-semibold text-foreground hover:border-primary/50" data-testid="button-add-expense-row"><Plus size={15} />Add another</button>
+                  <button type="submit" disabled={createExpense.isPending} className="button-lift flex h-10 items-center justify-center gap-2 rounded-lg bg-primary text-xs font-semibold text-primary-foreground disabled:opacity-60 sm:col-span-1 lg:col-span-3"><Plus size={15} />{createExpense.isPending ? 'Saving…' : rows.length === 1 ? 'Log expense' : `Log ${rows.length} expenses`}</button>
+                </div>
               </div>
             </form>
-            <ErrorNotice error={createExpense.error} />
           </FormDialog>
 
           <div className="rounded-2xl border border-border/80 bg-card p-5">

@@ -92,7 +92,7 @@ export function FormDialog({
         </div>
         {/* A long form (several learners, several payment lines) scrolls inside
             the dialog rather than pushing it past the top of the screen. */}
-        <div className="max-h-[calc(100vh-12rem)] overflow-y-auto p-5">{children}</div>
+        <div className="max-h-[calc(100vh-12rem)] overflow-y-auto px-5 pt-5">{children}</div>
       </div>
     </div>
   );

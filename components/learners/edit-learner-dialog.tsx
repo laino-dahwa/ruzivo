@@ -113,7 +113,7 @@ function EditLearnerForm({
   };
 
   return (
-    <form onSubmit={submit} className="space-y-3">
+    <form onSubmit={submit} className="space-y-3 pb-5">
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
           <label className="mb-1 block text-[10px] font-semibold text-muted-foreground">First name</label>

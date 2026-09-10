@@ -62,6 +62,13 @@ export function PaymentsView() {
   // Every line across every learner is one payment record.
   const totalPayments = blocks.reduce((count, block) => count + block.lines.length, 0);
 
+  // Shown live in the dialog footer so the amount about to be taken is visible
+  // before it is written. A blank or half-typed amount contributes nothing.
+  const totalAmount = blocks.reduce(
+    (sum, block) => sum + block.lines.reduce((lineSum, line) => lineSum + (Number(line.amount) || 0), 0),
+    0,
+  );
+
   const paymentsQuery = useQuery({
     queryKey: ['payments', filters],
     queryFn: () => paymentsApi.list({
@@ -330,12 +337,22 @@ export function PaymentsView() {
                 </div>
               ))}
 
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                <button type="button" onClick={addBlock} className="button-lift flex h-10 items-center justify-center gap-2 rounded-lg border border-border bg-background text-xs font-semibold text-foreground hover:border-primary/50" data-testid="button-add-payment-row"><Plus size={15} />Add another learner</button>
-                <button type="submit" disabled={recordPayment.isPending} className="button-lift flex h-10 items-center justify-center gap-2 rounded-lg bg-primary text-xs font-semibold text-primary-foreground disabled:opacity-60 lg:col-span-2"><Plus size={15} />{submitLabel}</button>
+              <ErrorNotice error={recordPayment.error} />
+              {/* Pinned to the bottom of the scroll area so the total and the
+                  submit button stay reachable however many learners are open. */}
+              <div className="sticky bottom-0 -mx-5 border-t border-border/60 bg-card px-5 pb-5 pt-3">
+                <div className="mb-3 flex items-baseline justify-between gap-3">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    {totalPayments === 1 ? 'Total' : `Total · ${totalPayments} payments`}
+                  </span>
+                  <span className="text-base font-semibold tabular-nums" data-testid="payments-total">{formatCurrency(totalAmount)}</span>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  <button type="button" onClick={addBlock} className="button-lift flex h-10 items-center justify-center gap-2 rounded-lg border border-border bg-background text-xs font-semibold text-foreground hover:border-primary/50" data-testid="button-add-payment-row"><Plus size={15} />Add another learner</button>
+                  <button type="submit" disabled={recordPayment.isPending} className="button-lift flex h-10 items-center justify-center gap-2 rounded-lg bg-primary text-xs font-semibold text-primary-foreground disabled:opacity-60 lg:col-span-2"><Plus size={15} />{submitLabel}</button>
+                </div>
               </div>
             </form>
-            <ErrorNotice error={recordPayment.error} />
           </FormDialog>
 
           <div className="rounded-2xl border border-border/80 bg-card p-5">

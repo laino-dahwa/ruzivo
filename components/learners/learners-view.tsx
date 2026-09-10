@@ -126,7 +126,7 @@ export function LearnersView() {
             title={rows.length === 1 ? 'Add a learner' : `Add ${rows.length} learners`}
             onClose={() => setAddOpen(false)}
           >
-            <form onSubmit={submit} className="space-y-3">
+            <form onSubmit={submit} className="space-y-3 pb-5">
               {rows.map((row, index) => (
                 <div key={index} className="space-y-2">
                   {rows.length > 1 && (
