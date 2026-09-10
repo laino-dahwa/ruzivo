@@ -56,7 +56,7 @@ async function dropTestDatabase() {
 beforeAll(recreateTestDatabase);
 afterAll(dropTestDatabase);
 
-describe("migrations/001_initial_schema.sql — fresh database", () => {
+describe("migrations — fresh database", () => {
   it("applies cleanly against a genuinely empty database", async () => {
     const applied = await runner({
       databaseUrl: testDbConfig(),
@@ -65,7 +65,9 @@ describe("migrations/001_initial_schema.sql — fresh database", () => {
       migrationsTable: "pgmigrations",
       log: () => {},
     });
-    expect(applied.map((m) => m.name)).toEqual(["001_initial_schema"]);
+    // Asserted in order and in full: a migration that stops being applied,
+    // or one that lands out of sequence, is exactly the failure this catches.
+    expect(applied.map((m) => m.name)).toEqual(["001_initial_schema", "002_school_logos"]);
   });
 
   it("creates every table the application code depends on", async () => {
@@ -88,6 +90,8 @@ describe("migrations/001_initial_schema.sql — fresh database", () => {
       "payment_methods",
       "payment_periods",
       "payments",
+      "school_logo_renditions",
+      "school_logos",
       "schools",
     ]);
   });

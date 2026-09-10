@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, nativeImage } from 'electron';
 import path from 'node:path';
 import { writeFile } from 'node:fs/promises';
 import { getDbConfig, getProvisioningMode, saveDbConfig, type DesktopDbConfig, type ProvisioningMode } from './config-store';
@@ -32,6 +32,43 @@ ipcMain.handle('dialog:save-file', async (_event, { suggestedName, data }: { sug
   });
   if (canceled || !filePath) return;
   await writeFile(filePath, Buffer.from(data));
+});
+
+/**
+ * Points the window at the school's icon, which is what Windows shows in the
+ * taskbar for a running app.
+ *
+ * The renderer sends a URL rather than image bytes, and it is fetched here
+ * against the app's own local Next server only — a page cannot talk the main
+ * process into loading an arbitrary remote image. Note this changes the icon of
+ * the *running window*; the icon baked into the installed .exe is fixed at
+ * build time and is not affected.
+ */
+ipcMain.on('window:set-icon', async (event, url: unknown) => {
+  if (typeof url !== 'string' || !mainWindow) return;
+
+  const senderOrigin = new URL(event.sender.getURL() || 'about:blank');
+  let target: URL;
+  try {
+    target = new URL(url, senderOrigin);
+  } catch {
+    return;
+  }
+  if (target.origin !== senderOrigin.origin) return;
+
+  try {
+    const response = await fetch(target.toString());
+    if (!response.ok) return;
+    const bytes = Buffer.from(await response.arrayBuffer());
+    // Guards against a huge body being turned into a native image.
+    if (bytes.length === 0 || bytes.length > 5 * 1024 * 1024) return;
+
+    const image = nativeImage.createFromBuffer(bytes);
+    if (image.isEmpty()) return;
+    mainWindow.setIcon(image);
+  } catch {
+    // A logo that cannot be fetched or decoded simply leaves the icon alone.
+  }
 });
 
 ipcMain.on('updater:check', () => {

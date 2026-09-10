@@ -5,6 +5,7 @@ import { resolveExpenseScope } from "../../../../../../lib/reports/expenseScope"
 import { formatCurrency } from "../../../../../../lib/currency";
 import { generateCombinedReportPdf } from "../../../../../../lib/pdf/generateReportPdf";
 import { getschool } from "../../../../../../repositories/school/read/getSchool";
+import { getSchoolLogo } from "../../../../../../repositories/school/logo/schoolLogo";
 import { getReportSummary } from "../../../../../../repositories/report/getReportSummary";
 import { getPaymentsReport } from "../../../../../../repositories/report/getPaymentsReport";
 import { getOwingReport } from "../../../../../../repositories/report/getOwingReport";
@@ -35,8 +36,9 @@ export async function GET(request: Request, { params }: Params) {
 
         const expenseScope = await resolveExpenseScope(school_id, scope, searchParams.get("academic_year_id"));
 
-        const [schools, summary, payments, owing, expenses, dateLabel] = await Promise.all([
+        const [schools, logo, summary, payments, owing, expenses, dateLabel] = await Promise.all([
             getschool(school_id),
+            getSchoolLogo(school_id, { size: 128 }),
             getReportSummary(school_id, scope, expenseScope.scope),
             getPaymentsReport(school_id, scope),
             getOwingReport(school_id, scope),
@@ -47,6 +49,7 @@ export async function GET(request: Request, { params }: Params) {
         const pdf = await generateCombinedReportPdf({
             appName: "Ruzivo",
             schoolName: schools[0]?.school_name ?? school_id,
+            logo: logo?.data ?? null,
             reportTitle: "Financial Report",
             dateLabel,
             generatedAtLabel: formatDateLabel(new Date().toISOString().slice(0, 10)),

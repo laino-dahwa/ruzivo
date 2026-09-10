@@ -15,6 +15,8 @@ export type ReportPdfOptions = {
     /** Omitted for listing exports that aren't scoped to a reporting period. */
     dateLabel?: string;
     generatedAtLabel: string;
+    /** The school's logo, drawn beside the title. */
+    logo?: Buffer | null;
     columns: PdfColumn[];
     rows: Record<string, string>[];
     /** Omitted for tables that have no meaningful total (e.g. a learner list). */
@@ -39,6 +41,7 @@ export type CombinedReportPdfOptions = {
     reportTitle: string;
     dateLabel?: string;
     generatedAtLabel: string;
+    logo?: Buffer | null;
     /** The headline figures, printed above the tables. */
     summary: { label: string; value: string; emphasis?: boolean }[];
     sections: PdfSection[];
@@ -66,21 +69,47 @@ function pageWidthOf(doc: Doc) {
     return doc.page.width - doc.page.margins.left - doc.page.margins.right;
 }
 
-function drawHeader(doc: Doc, options: Pick<ReportPdfOptions, "appName" | "schoolName" | "reportTitle" | "dateLabel" | "generatedAtLabel">) {
-    doc.font("Helvetica-Bold").fontSize(18).fillColor("#000").text(options.appName);
+function drawHeader(doc: Doc, options: Pick<ReportPdfOptions, "appName" | "schoolName" | "reportTitle" | "dateLabel" | "generatedAtLabel" | "logo">) {
+    const top = doc.y;
+    let textLeft = doc.page.margins.left;
+
+    if (options.logo) {
+        try {
+            const box = 46;
+            doc.image(options.logo, doc.page.margins.left, top, { fit: [box, box] });
+            textLeft += box + 12;
+            doc.x = textLeft;
+        } catch {
+            // A logo that PDFKit cannot decode must not cost the school its
+            // report; the header simply renders without it.
+            textLeft = doc.page.margins.left;
+            doc.x = textLeft;
+        }
+    }
+
+    const textWidth = doc.page.width - doc.page.margins.right - textLeft;
+    const line = (text: string) => doc.text(text, textLeft, doc.y, { width: textWidth });
+
+    doc.font("Helvetica-Bold").fontSize(18).fillColor("#000");
+    line(options.appName);
     if (options.schoolName) {
-        doc.font("Helvetica").fontSize(11).fillColor("#555").text(options.schoolName);
+        doc.font("Helvetica").fontSize(11).fillColor("#555");
+        line(options.schoolName);
     }
     doc.moveDown(0.7);
-    doc.font("Helvetica-Bold").fontSize(14).fillColor("#000").text(options.reportTitle.toUpperCase());
+    doc.font("Helvetica-Bold").fontSize(14).fillColor("#000");
+    line(options.reportTitle.toUpperCase());
     doc.moveDown(0.3);
     doc.font("Helvetica").fontSize(9).fillColor("#333");
     if (options.dateLabel) {
-        doc.text(`Reporting Period: ${options.dateLabel}`);
+        line(`Reporting Period: ${options.dateLabel}`);
     }
-    doc.text(`Generated: ${options.generatedAtLabel}`);
+    line(`Generated: ${options.generatedAtLabel}`);
     doc.moveDown(0.9);
-    return doc.y;
+
+    // Tables start below whichever is taller, the logo or the text block.
+    doc.x = doc.page.margins.left;
+    return Math.max(doc.y, options.logo ? top + 46 + 12 : 0);
 }
 
 /**

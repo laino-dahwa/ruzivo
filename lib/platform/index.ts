@@ -17,6 +17,8 @@ export interface DesktopBridge {
   getAppVersion(): Promise<string>;
   /** Hands bytes to a native "Save As" dialog instead of a browser download. */
   saveFile(suggestedName: string, data: Uint8Array): Promise<void>;
+  /** Points the window (and so the taskbar) at the school's icon. */
+  setWindowIcon?(url: string): void;
   checkForUpdates(): void;
   /** Restarts the app to install an already-downloaded update. */
   installUpdate(): void;

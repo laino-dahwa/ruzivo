@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getPaymentsReport } from "../../../../../../repositories/report/getPaymentsReport";
+import { getSchoolLogo } from "../../../../../../repositories/school/logo/schoolLogo";
 import { getschool } from "../../../../../../repositories/school/read/getSchool";
 import { generateReportPdf } from "../../../../../../lib/pdf/generateReportPdf";
 import { formatCurrency } from "../../../../../../lib/currency";
@@ -26,12 +27,16 @@ export async function GET(request: Request, { params }: Params) {
         const { rows, total } = await getPaymentsReport(school_id, scope!);
 
         if (isPdfFormat(searchParams)) {
-            const schools = await getschool(school_id);
+            const [schools, logo] = await Promise.all([
+                getschool(school_id),
+                getSchoolLogo(school_id, { size: 128 }),
+            ]);
             const schoolName = schools[0]?.school_name ?? school_id;
 
             const pdf = await generateReportPdf({
                 appName: "Ruzivo",
                 schoolName,
+                logo: logo?.data ?? null,
                 reportTitle: "Payments Report",
                 dateLabel: await reportScopeLabel(school_id, scope!),
                 generatedAtLabel: formatDateLabel(new Date().toISOString().slice(0, 10)),

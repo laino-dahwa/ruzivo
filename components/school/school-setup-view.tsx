@@ -21,6 +21,7 @@ import { useSchoolReferenceData } from '../reference-data/use-school-reference-d
 import { ReferenceListForm } from '../reference-data/reference-list-form';
 import { SectionHeading } from '../shared/section-heading';
 import { NoSchoolNotice } from '../shared/no-school-notice';
+import { SchoolLogoCard } from './school-logo-card';
 import { ErrorNotice } from '../shared/error-notice';
 
 export function SchoolSetupView() {
@@ -101,7 +102,9 @@ export function SchoolSetupView() {
       </div>
 
       {!schoolId ? <div className="mt-6"><NoSchoolNotice /></div> : (
-        <div className="mt-8 grid gap-6 lg:grid-cols-2">
+        <>
+        <div className="mt-8"><SchoolLogoCard schoolId={schoolId} /></div>
+        <div className="mt-6 grid gap-6 lg:grid-cols-2">
           <ReferenceListForm<Gender>
             title="Genders" rows={ref.genders.data} isLoading={ref.genders.isLoading}
             columns={[{ key: 'gender_id', label: 'ID' }, { key: 'gender_name', label: 'Name' }]}
@@ -166,6 +169,7 @@ export function SchoolSetupView() {
             onDelete={(id) => expenseCategoriesApi.remove(schoolId, 'expense_category_id', id).then(() => invalidateRef('expense_categories'))}
           />
         </div>
+        </>
       )}
     </>
   );

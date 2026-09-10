@@ -5,22 +5,32 @@ import { usePathname } from 'next/navigation';
 import { useState, type ReactNode } from 'react';
 import { CalendarDays, Menu, WalletCards, X } from 'lucide-react';
 import { useCurrentSchoolId } from '../../lib/client/current-school-id';
+import { useSchoolLogo } from '../../lib/client/use-school-logo';
+import { schoolLogoUrl } from '../../services/logo';
 import { nav } from './nav-config';
 import { UpdateNotice } from './update-notice';
+import { SchoolFavicon } from './school-favicon';
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [mobileNav, setMobileNav] = useState(false);
   const { schoolId } = useCurrentSchoolId();
+  const { hasLogo, stamp } = useSchoolLogo(schoolId);
 
   return (
     <div className="grain min-h-[100dvh] bg-background md:flex">
       <UpdateNotice />
+      <SchoolFavicon />
       <aside className={`fixed inset-y-0 left-0 z-40 w-[254px] bg-sidebar px-5 py-6 text-sidebar-foreground transition-transform duration-300 md:relative md:translate-x-0 ${mobileNav ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex h-full flex-col">
           <div className="flex items-center justify-between px-2">
             <Link href="/" data-testid="link-brand" className="flex items-center gap-3 text-sidebar-foreground">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-sidebar-primary text-sidebar-primary-foreground"><WalletCards size={18} strokeWidth={2.3} /></span>
+              <span className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl bg-sidebar-primary text-sidebar-primary-foreground">
+                {schoolId && hasLogo
+                  // eslint-disable-next-line @next/next/no-img-element -- served from an API route, not a static asset
+                  ? <img src={schoolLogoUrl(schoolId, { size: 64, stamp })} alt="" className="h-full w-full object-contain" />
+                  : <WalletCards size={18} strokeWidth={2.3} />}
+              </span>
               <span><span className="block text-[15px] font-semibold tracking-[-.02em]">Ruzivo</span><span className="block text-[10px] uppercase tracking-[.18em] text-sidebar-foreground/55">Finance office</span></span>
             </Link>
             <button type="button" onClick={() => setMobileNav(false)} className="text-sidebar-foreground/60 md:hidden" aria-label="Close navigation" data-testid="button-close-navigation"><X size={19} /></button>

@@ -26,6 +26,8 @@ interface DesktopBridge {
   checkForUpdates(): void;
   installUpdate(): void;
   onUpdateStatus(callback: (status: UpdateStatus) => void): () => void;
+  /** Points the window (and so the taskbar) at the school's icon. */
+  setWindowIcon(url: string): void;
 }
 const bridge: DesktopBridge = {
   isDesktop: true,
@@ -33,6 +35,7 @@ const bridge: DesktopBridge = {
   saveFile: (suggestedName, data) => ipcRenderer.invoke('dialog:save-file', { suggestedName, data }),
   checkForUpdates: () => ipcRenderer.send('updater:check'),
   installUpdate: () => ipcRenderer.send('updater:install'),
+  setWindowIcon: (url: string) => ipcRenderer.send('window:set-icon', url),
   onUpdateStatus: (callback: (status: UpdateStatus) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, status: UpdateStatus) => callback(status);
     ipcRenderer.on('updater:status', listener);
