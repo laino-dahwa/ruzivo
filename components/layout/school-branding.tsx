@@ -3,10 +3,12 @@
 import { useEffect } from 'react';
 import { useCurrentSchoolId } from '../../lib/client/current-school-id';
 import { useSchoolLogo } from '../../lib/client/use-school-logo';
+import { DEFAULT_APP_NAME, useSchoolName } from '../../lib/client/use-school-name';
 import { schoolLogoUrl } from '../../services/logo';
 
 /**
- * Points the browser tab at the active school's logo.
+ * Puts the active school's identity on the document itself: the tab's title and
+ * its icon.
  *
  * The icon has to be set from the client rather than through the route's
  * metadata: which school is active lives in localStorage, so the server has no
@@ -15,9 +17,19 @@ import { schoolLogoUrl } from '../../services/logo';
  * In the desktop build this also drives the taskbar icon — Windows shows the
  * window's icon there — via the preload bridge.
  */
-export function SchoolFavicon() {
+export function SchoolBranding() {
   const { schoolId } = useCurrentSchoolId();
   const { hasLogo, stamp } = useSchoolLogo(schoolId);
+  const { name } = useSchoolName();
+
+  // The tab is named for the school, falling back to the app's own name when
+  // none is chosen — the same rule the sidebar and the reports follow.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const previous = document.title;
+    document.title = name || DEFAULT_APP_NAME;
+    return () => { document.title = previous; };
+  }, [name]);
 
   useEffect(() => {
     if (typeof document === 'undefined') return;

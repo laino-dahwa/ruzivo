@@ -8,8 +8,9 @@ export type PdfColumn = {
 };
 
 export type ReportPdfOptions = {
+    /** Fallback heading, used only when there is no school name. */
     appName: string;
-    /** Omitted where the underlying query is not scoped to a single school. */
+    /** The school's name — the heading on anything scoped to one school. */
     schoolName?: string;
     reportTitle: string;
     /** Omitted for listing exports that aren't scoped to a reporting period. */
@@ -90,12 +91,11 @@ function drawHeader(doc: Doc, options: Pick<ReportPdfOptions, "appName" | "schoo
     const textWidth = doc.page.width - doc.page.margins.right - textLeft;
     const line = (text: string) => doc.text(text, textLeft, doc.y, { width: textWidth });
 
+    // The school's own name heads its reports; the app name is only a fallback
+    // for an export that is not scoped to one school, or a school with no name
+    // recorded yet.
     doc.font("Helvetica-Bold").fontSize(18).fillColor("#000");
-    line(options.appName);
-    if (options.schoolName) {
-        doc.font("Helvetica").fontSize(11).fillColor("#555");
-        line(options.schoolName);
-    }
+    line(options.schoolName?.trim() || options.appName);
     doc.moveDown(0.7);
     doc.font("Helvetica-Bold").fontSize(14).fillColor("#000");
     line(options.reportTitle.toUpperCase());
