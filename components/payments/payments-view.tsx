@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2 } from 'lucide-react';
 import { useToast } from '../../app/components/hooks/use-toast';
@@ -15,6 +15,7 @@ import { NoSchoolNotice } from '../shared/no-school-notice';
 import { ErrorNotice } from '../shared/error-notice';
 import { ConfirmDialog } from '../shared/confirm-dialog';
 import { DownloadPdfButton } from '../shared/download-pdf-button';
+import { SearchSelect } from '../shared/search-select';
 import { AddRecordButton, FormDialog } from '../shared/form-dialog';
 
 // One fee being paid: an income category and the amount paid towards it.
@@ -33,12 +34,17 @@ type PaymentBlock = {
   lines: PaymentLine[];
 };
 
+const MONTH_NAMES = [
+  'january', 'february', 'march', 'april', 'may', 'june',
+  'july', 'august', 'september', 'october', 'november', 'december',
+];
+
 function emptyPaymentLine(): PaymentLine {
   return { income_category_id: '', amount: '' };
 }
 
-function emptyPaymentBlock(): PaymentBlock {
-  return { learner_id: '', enrolment_id: '', payment_period_id: '', payment_method_id: '', lines: [emptyPaymentLine()] };
+function emptyPaymentBlock(paymentPeriodId = ''): PaymentBlock {
+  return { learner_id: '', enrolment_id: '', payment_period_id: paymentPeriodId, payment_method_id: '', lines: [emptyPaymentLine()] };
 }
 
 export function PaymentsView() {
@@ -61,6 +67,66 @@ export function PaymentsView() {
 
   // Every line across every learner is one payment record.
   const totalPayments = blocks.reduce((count, block) => count + block.lines.length, 0);
+
+  /**
+   * The academic year covering today. Falls back to a record simply named for
+   * the current year (a year whose end_date has already passed still needs to
+   * accept payments), and finally to the first record so a school that has not
+   * dated its years keeps working as before.
+   */
+  const currentAcademicYearId = useMemo(() => {
+    const years = ref.academicYears.data;
+    if (!years?.length) return undefined;
+
+    const today = new Date();
+    const covering = years.find((year) => {
+      const start = new Date(year.start_date);
+      const end = new Date(year.end_date);
+      return !Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && today >= start && today <= end;
+    });
+    const named = years.find((year) => String(year.academic_year_name ?? '').trim() === String(today.getFullYear()));
+    return (covering ?? named ?? years[0]).academic_year_id;
+  }, [ref.academicYears.data]);
+
+  const currentAcademicYearName = ref.academicYears.data?.find(
+    (year) => year.academic_year_id === currentAcademicYearId,
+  )?.academic_year_name;
+
+  /**
+   * The payment period for the current month, when the school's periods are
+   * months at all. A school running terms or quarters matches nothing here and
+   * is left to pick for itself rather than being given a wrong default.
+   */
+  const currentPeriodId = useMemo(() => {
+    const periods = ref.paymentPeriods.data;
+    if (!periods?.length) return '';
+    const thisMonth = MONTH_NAMES[new Date().getMonth()];
+    const match = periods.find((period) => String(period.period_name ?? '').trim().toLowerCase() === thisMonth);
+    return match ? String(match.payment_period_id) : '';
+  }, [ref.paymentPeriods.data]);
+
+  // The first block is built before the reference data arrives, so the default
+  // is filled in once it does. Guarded so a period the user deliberately
+  // cleared is not silently put back.
+  const seededPeriod = useRef(false);
+  useEffect(() => {
+    if (seededPeriod.current || !currentPeriodId) return;
+    seededPeriod.current = true;
+    setBlocks((current) => current.map((block) => (
+      block.payment_period_id ? block : { ...block, payment_period_id: currentPeriodId }
+    )));
+  }, [currentPeriodId]);
+
+  const incomeOptions = useMemo(
+    () => (ref.incomeCategories.data ?? []).map((income) => ({
+      value: String(income.income_category_id),
+      label: income.income_name,
+      hint: income.income_limit === null || income.income_limit === undefined
+        ? undefined
+        : formatCurrency(income.income_limit),
+    })),
+    [ref.incomeCategories.data],
+  );
 
   // Shown live in the dialog footer so the amount about to be taken is visible
   // before it is written. A blank or half-typed amount contributes nothing.
@@ -97,11 +163,17 @@ export function PaymentsView() {
    * Mirrors the server's rule exactly, including counting earlier lines in
    * this same form so a bulk entry can't silently plan an overpayment.
    */
-  const feeStatusFor = (block: PaymentBlock, blockIndex: number, lineIndex: number) => {
-    const line = block.lines[lineIndex];
-    if (!block.learner_id || !block.payment_period_id || !line.income_category_id) return null;
+  const feeStatusFor = (
+    block: PaymentBlock,
+    blockIndex: number,
+    lineIndex: number,
+    // Lets the amount be priced against a category the moment it is picked,
+    // before that choice has been written back into state.
+    incomeCategoryId = block.lines[lineIndex].income_category_id,
+  ) => {
+    if (!block.learner_id || !block.payment_period_id || !incomeCategoryId) return null;
 
-    const income = ref.incomeCategories.data?.find((i) => String(i.income_category_id) === line.income_category_id);
+    const income = ref.incomeCategories.data?.find((i) => String(i.income_category_id) === incomeCategoryId);
     const period = ref.paymentPeriods.data?.find((p) => String(p.payment_period_id) === block.payment_period_id);
     if (!income || income.income_limit === null || income.income_limit === undefined || !period) return null;
 
@@ -121,7 +193,7 @@ export function PaymentsView() {
         if (!isEarlier) return;
         if (otherBlock.learner_id !== block.learner_id) return;
         if (otherBlock.payment_period_id !== block.payment_period_id) return;
-        if (otherLine.income_category_id !== line.income_category_id) return;
+        if (otherLine.income_category_id !== incomeCategoryId) return;
         pending += Number(otherLine.amount) || 0;
       });
     });
@@ -142,7 +214,7 @@ export function PaymentsView() {
       setAddOpen(false);
       // Reset only on success — a failed submission keeps every row so the
       // user can fix the problem instead of retyping the batch.
-      setBlocks([emptyPaymentBlock()]);
+      setBlocks([emptyPaymentBlock(currentPeriodId)]);
       queryClient.invalidateQueries({ queryKey: ['payments'] });
       queryClient.invalidateQueries({ queryKey: ['balances'] });
     },
@@ -170,7 +242,7 @@ export function PaymentsView() {
         : block
     )));
 
-  const addBlock = () => setBlocks((current) => [...current, emptyPaymentBlock()]);
+  const addBlock = () => setBlocks((current) => [...current, emptyPaymentBlock(currentPeriodId)]);
 
   const removeBlock = (index: number) => setBlocks((current) => current.filter((_, i) => i !== index));
 
@@ -178,6 +250,29 @@ export function PaymentsView() {
     setBlocks((current) => current.map((block, i) => (
       i === blockIndex ? { ...block, lines: [...block.lines, emptyPaymentLine()] } : block
     )));
+
+  /**
+   * Choosing a fee also fills in the amount, since paying a fee off in full is
+   * the common case. The figure offered is what is actually still payable —
+   * the fee's limit less anything already paid and anything entered on earlier
+   * lines of this form — so the prefilled value is never one the server would
+   * reject. A fee already settled is left blank, with the note underneath
+   * explaining why.
+   */
+  const chooseIncomeCategory = (blockIndex: number, lineIndex: number, incomeCategoryId: string) => {
+    const block = blocks[blockIndex];
+    const income = ref.incomeCategories.data?.find((i) => String(i.income_category_id) === incomeCategoryId);
+
+    let amount = '';
+    if (income) {
+      const status = feeStatusFor(block, blockIndex, lineIndex, incomeCategoryId);
+      const limit = Number(income.income_limit);
+      const payable = status ? status.remaining : (Number.isFinite(limit) ? limit : 0);
+      if (payable > 0) amount = String(payable);
+    }
+
+    updateLine(blockIndex, lineIndex, { income_category_id: incomeCategoryId, amount });
+  };
 
   const removeLine = (blockIndex: number, lineIndex: number) =>
     setBlocks((current) => current.map((block, i) => (
@@ -197,10 +292,20 @@ export function PaymentsView() {
       return;
     }
 
-    // Preserves the existing, pre-migration behavior: the first available
-    // academic year record is used automatically rather than letting the
-    // user choose one (there is no academic-year picker in this form).
-    const academicYearId = ref.academicYears.data?.[0]?.academic_year_id;
+    // A fee is no longer validated by the browser now that it is a search box,
+    // so the same check the <select required> used to give is made here.
+    for (const [blockIndex, block] of blocks.entries()) {
+      const missingFee = block.lines.findIndex((line) => !line.income_category_id);
+      if (missingFee === -1) continue;
+      const which = blocks.length === 1 ? '' : `Learner ${blockIndex + 1}: `;
+      const line = block.lines.length === 1 ? '' : `payment ${missingFee + 1}: `;
+      toast({ title: `${which}${line}choose an income category`.replace(/^./, (c) => c.toUpperCase()), variant: 'destructive' });
+      return;
+    }
+
+    // The year covering today rather than whichever record happens to be first,
+    // so a payment is not attributed to a year that has already closed.
+    const academicYearId = currentAcademicYearId;
     if (!academicYearId) {
       toast({ title: 'Add an academic year first', variant: 'destructive' });
       return;
@@ -239,7 +344,7 @@ export function PaymentsView() {
             open={addOpen}
             width="xl"
             title={totalPayments === 1 ? 'Record a payment' : `Record ${totalPayments} payments`}
-            description="Uses the first available academic year record. Enrolment ID fills in automatically once a learner is selected."
+            description={`Recorded against ${currentAcademicYearName ?? 'the current academic year'}. Enrolment ID fills in automatically once a learner is selected.`}
             onClose={() => setAddOpen(false)}
           >
             <form onSubmit={submitPayment} className="space-y-4">
@@ -281,10 +386,14 @@ export function PaymentsView() {
                   {/* Each line is a separate fee for this same learner. */}
                   {block.lines.map((line, lineIndex) => (
                     <div key={lineIndex} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                      <select required value={line.income_category_id} onChange={(e) => updateLine(blockIndex, lineIndex, { income_category_id: e.target.value })} className="field lg:col-span-2">
-                        <option value="">Income category…</option>
-                        {ref.incomeCategories.data?.map((i) => <option key={i.income_category_id} value={i.income_category_id}>{i.income_name}</option>)}
-                      </select>
+                      <SearchSelect
+                        options={incomeOptions}
+                        value={line.income_category_id}
+                        onSelect={(incomeCategoryId) => chooseIncomeCategory(blockIndex, lineIndex, incomeCategoryId)}
+                        placeholder="Search income category…"
+                        className="lg:col-span-2"
+                        testId={`input-income-${blockIndex}-${lineIndex}`}
+                      />
                       <div>
                         {(() => {
                           const status = feeStatusFor(block, blockIndex, lineIndex);
