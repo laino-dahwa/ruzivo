@@ -14,6 +14,7 @@ import { NoSchoolNotice } from '../shared/no-school-notice';
 import { ErrorNotice } from '../shared/error-notice';
 import { ConfirmDialog } from '../shared/confirm-dialog';
 import { DownloadPdfButton } from '../shared/download-pdf-button';
+import { AddRecordButton, FormDialog } from '../shared/form-dialog';
 
 type ExpenseRow = { expense_category_id: string; amount: string; expense_date: string; description: string };
 
@@ -28,6 +29,7 @@ export function ExpensesView() {
   const ref = useSchoolReferenceData(schoolId);
   const [rows, setRows] = useState<ExpenseRow[]>([emptyExpenseRow()]);
   const [pendingDeleteExpense, setPendingDeleteExpense] = useState<Expense | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
 
   const expensesQuery = useQuery({ queryKey: ['expenses', schoolId], queryFn: () => expensesApi.list(schoolId!), enabled: !!schoolId });
 
@@ -45,6 +47,7 @@ export function ExpensesView() {
     ),
     onSuccess: (_result, inputs) => {
       toast({ title: inputs.length === 1 ? 'Expense logged' : `${inputs.length} expenses logged` });
+      setAddOpen(false);
       // Reset only on success — a failed submission keeps every row so the
       // user can fix the problem instead of retyping the whole batch.
       setRows([emptyExpenseRow()]);
@@ -78,12 +81,20 @@ export function ExpensesView() {
 
   return (
     <>
-      <SectionHeading eyebrow="Expenses" title="Expenses" detail="Backed by GET/POST /api/schools/[school_id]/expenses." />
+      <SectionHeading
+        eyebrow="Expenses"
+        title="Expenses"
+        detail="Backed by GET/POST /api/schools/[school_id]/expenses."
+        action={schoolId ? <AddRecordButton label="Log expense" onClick={() => setAddOpen(true)} testId="button-open-log-expense" /> : undefined}
+      />
       {!schoolId ? <NoSchoolNotice /> : (
         <>
-          <div className="rounded-2xl border border-border/80 bg-card p-5">
-            <h3 className="text-sm font-semibold">{rows.length === 1 ? 'Log an expense' : `Log ${rows.length} expenses`}</h3>
-            <form onSubmit={submit} className="mt-3 space-y-3">
+          <FormDialog
+            open={addOpen}
+            title={rows.length === 1 ? 'Log an expense' : `Log ${rows.length} expenses`}
+            onClose={() => setAddOpen(false)}
+          >
+            <form onSubmit={submit} className="space-y-3">
               {rows.map((row, index) => (
                 <div key={index} className="space-y-2">
                   {rows.length > 1 && (
@@ -116,9 +127,9 @@ export function ExpensesView() {
               </div>
             </form>
             <ErrorNotice error={createExpense.error} />
-          </div>
+          </FormDialog>
 
-          <div className="mt-6 rounded-2xl border border-border/80 bg-card p-5">
+          <div className="rounded-2xl border border-border/80 bg-card p-5">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-sm font-semibold">Logged expenses</h3>
               <DownloadPdfButton

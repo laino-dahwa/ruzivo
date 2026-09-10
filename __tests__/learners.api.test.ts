@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { GET, POST, DELETE } from "../app/api/learners/route";
+import { GET, POST, PATCH, DELETE } from "../app/api/learners/route";
 import { createSchool } from "../repositories/school/create/createSchool";
 import { createGender } from "../repositories/school/create/createGenderCategory";
 import { createClassCategory } from "../repositories/school/create/createClassCategory";
@@ -285,6 +285,231 @@ describe("DELETE /api/learners (soft delete)", () => {
 
   it("rejects a delete request missing learner_id", async () => {
     const response = await DELETE(makeRequest("http://localhost/api/learners", { method: "DELETE" }));
+    expect(response.status).toBe(400);
+  });
+});
+
+describe("PATCH /api/learners (edit)", () => {
+  async function createEditable(first: string, last: string) {
+    const [created] = await readJson(await POST(makeRequest("http://localhost/api/learners", {
+      method: "POST",
+      body: JSON.stringify([makeLearnerInput({ first_name: first, last_name: last })]),
+    })));
+    const [row] = await readJson(await GET(makeRequest(`http://localhost/api/learners?learner_id=${created.learner_id}`)));
+    return row;
+  }
+
+  it("exposes the raw ids and an unshifted date_of_birth so the edit form can be seeded", async () => {
+    const row = await createEditable("Seed", "Values");
+    // date_of_birth travels as YYYY-MM-DD: read back as a Date it picks up the
+    // server's UTC offset and renders as the previous day in the form.
+    expect(row.date_of_birth).toBe("2015-06-01");
+    // pg hands back the raw BIGINT fixture ids as strings; getLearners casts
+    // them to int so the form's selects can compare them without coercion.
+    expect(row.gender_id).toBe(Number(genderA));
+    expect(row.class_category_id).toBe(Number(classA));
+    expect(row.academic_year_id).toBe(Number(yearA));
+    expect(typeof row.enrolment_id).toBe("number");
+  });
+
+  it("updates every editable field and persists them", async () => {
+    const row = await createEditable("Before", "Change");
+
+    const [gender2] = await createGender([{ school_id: SCHOOL_A, gender_name: "Test Gender A2" }]);
+    const [class2] = await createClassCategory([{ school_id: SCHOOL_A, class_name: "Test Class A2" }]);
+    const [year2] = await createAcademicYear([{ school_id: SCHOOL_A, academic_year_name: "Test Year A2", start_date: "2027-01-01", end_date: "2027-12-31" }]);
+
+    try {
+      const response = await PATCH(makeRequest("http://localhost/api/learners", {
+        method: "PATCH",
+        body: JSON.stringify({
+          learner_id: row.learner_id,
+          enrolment_id: row.enrolment_id,
+          first_name: "After",
+          last_name: "Changed",
+          gender_id: gender2.gender_id,
+          date_of_birth: "2016-08-09",
+          class_category_id: class2.class_category_id,
+          academic_year_id: year2.academic_year_id,
+        }),
+      }));
+      expect(response.status).toBe(200);
+
+      const [updated] = await readJson(await GET(makeRequest(`http://localhost/api/learners?learner_id=${row.learner_id}`)));
+      expect(updated).toMatchObject({
+        learner_id: row.learner_id,
+        first_name: "After",
+        last_name: "Changed",
+        gender_name: "Test Gender A2",
+        class_name: "Test Class A2",
+        curent_year: "Test Year A2",
+        date_of_birth: "2016-08-09",
+      });
+    } finally {
+      await query("UPDATE enrolments SET class_category_id = $1, academic_year_id = $2 WHERE learner_id = $3", [classA, yearA, row.learner_id]);
+      await query("UPDATE learners SET gender_id = $1 WHERE learner_id = $2", [genderA, row.learner_id]);
+      await query("DELETE FROM academic_years WHERE academic_year_id = $1", [year2.academic_year_id]);
+      await query("DELETE FROM class_categories WHERE class_category_id = $1", [class2.class_category_id]);
+      await query("DELETE FROM genders WHERE gender_id = $1", [gender2.gender_id]);
+    }
+  });
+
+  it("never changes learner_id, so dependent rows keep pointing at the same learner", async () => {
+    const row = await createEditable("Stable", "Identity");
+
+    await PATCH(makeRequest("http://localhost/api/learners", {
+      method: "PATCH",
+      body: JSON.stringify({ learner_id: row.learner_id, enrolment_id: row.enrolment_id, first_name: "Renamed", learner_id_new: "HACKED" }),
+    }));
+
+    const stored = await query("SELECT learner_id, first_name FROM learners WHERE learner_id = $1", [row.learner_id]);
+    expect(stored.rowCount).toBe(1);
+    expect(stored.rows[0].first_name).toBe("Renamed");
+  });
+
+  it("leaves omitted fields untouched", async () => {
+    const row = await createEditable("Partial", "Edit");
+
+    const response = await PATCH(makeRequest("http://localhost/api/learners", {
+      method: "PATCH",
+      body: JSON.stringify({ learner_id: row.learner_id, enrolment_id: row.enrolment_id, first_name: "OnlyFirst" }),
+    }));
+    expect(response.status).toBe(200);
+
+    const [updated] = await readJson(await GET(makeRequest(`http://localhost/api/learners?learner_id=${row.learner_id}`)));
+    expect(updated).toMatchObject({
+      first_name: "OnlyFirst",
+      last_name: "Edit",
+      gender_name: "Test Gender A",
+      class_name: "Test Class A",
+      date_of_birth: "2015-06-01",
+    });
+  });
+
+  it("updates several learners in one request", async () => {
+    // The values list is built per record; a wrong per-row offset silently
+    // wrote the wrong learner's values from the second record onwards.
+    const a = await createEditable("Batch", "One");
+    const b = await createEditable("Batch", "Two");
+
+    const response = await PATCH(makeRequest("http://localhost/api/learners", {
+      method: "PATCH",
+      body: JSON.stringify([
+        { learner_id: a.learner_id, enrolment_id: a.enrolment_id, first_name: "AlphaEdited", last_name: "AA" },
+        { learner_id: b.learner_id, enrolment_id: b.enrolment_id, first_name: "BetaEdited", last_name: "BB" },
+      ]),
+    }));
+    expect(response.status).toBe(200);
+
+    const [rowA] = await readJson(await GET(makeRequest(`http://localhost/api/learners?learner_id=${a.learner_id}`)));
+    const [rowB] = await readJson(await GET(makeRequest(`http://localhost/api/learners?learner_id=${b.learner_id}`)));
+    expect(rowA).toMatchObject({ first_name: "AlphaEdited", last_name: "AA" });
+    expect(rowB).toMatchObject({ first_name: "BetaEdited", last_name: "BB" });
+  });
+
+  it("rejects the whole batch when one record is invalid, changing nothing", async () => {
+    const a = await createEditable("Reject", "Untouched");
+    const b = await createEditable("Reject", "Invalid");
+
+    const response = await PATCH(makeRequest("http://localhost/api/learners", {
+      method: "PATCH",
+      body: JSON.stringify([
+        { learner_id: a.learner_id, enrolment_id: a.enrolment_id, first_name: "ShouldNotApply" },
+        { learner_id: b.learner_id, enrolment_id: b.enrolment_id, date_of_birth: "not-a-date" },
+      ]),
+    }));
+    expect(response.status).toBe(400);
+
+    const body = await readJson(response);
+    expect(body.details).toEqual([{ index: 1, field: "date_of_birth", message: "Date of birth must be a date in YYYY-MM-DD format" }]);
+
+    const [rowA] = await readJson(await GET(makeRequest(`http://localhost/api/learners?learner_id=${a.learner_id}`)));
+    expect(rowA.first_name).toBe("Reject");
+  });
+
+  it("rejects an edit with no editable fields rather than reporting a no-op success", async () => {
+    const row = await createEditable("NoOp", "Edit");
+    const response = await PATCH(makeRequest("http://localhost/api/learners", {
+      method: "PATCH",
+      body: JSON.stringify({ learner_id: row.learner_id, enrolment_id: row.enrolment_id }),
+    }));
+    expect(response.status).toBe(400);
+    expect((await readJson(response)).error).toContain("No fields to update");
+  });
+
+  it("rejects the same learner twice in one request", async () => {
+    const row = await createEditable("Duplicate", "Record");
+    const response = await PATCH(makeRequest("http://localhost/api/learners", {
+      method: "PATCH",
+      body: JSON.stringify([
+        { learner_id: row.learner_id, enrolment_id: row.enrolment_id, first_name: "First" },
+        { learner_id: row.learner_id, enrolment_id: row.enrolment_id, first_name: "Second" },
+      ]),
+    }));
+    expect(response.status).toBe(400);
+    expect((await readJson(response)).error).toContain("Duplicate");
+  });
+
+  it("refuses to edit an unknown or soft-deleted learner", async () => {
+    const row = await createEditable("Deleted", "Learner");
+    await DELETE(makeRequest(`http://localhost/api/learners?learner_id=${row.learner_id}`, { method: "DELETE" }));
+
+    const response = await PATCH(makeRequest("http://localhost/api/learners", {
+      method: "PATCH",
+      body: JSON.stringify({ learner_id: row.learner_id, enrolment_id: row.enrolment_id, first_name: "Ghost" }),
+    }));
+    expect(response.status).toBe(409);
+    expect((await readJson(response)).error).toContain("not found");
+  });
+
+  it("refuses an enrolment_id that belongs to a different learner", async () => {
+    const a = await createEditable("Mismatch", "One");
+    const b = await createEditable("Mismatch", "Two");
+
+    const response = await PATCH(makeRequest("http://localhost/api/learners", {
+      method: "PATCH",
+      body: JSON.stringify({ learner_id: a.learner_id, enrolment_id: b.enrolment_id, first_name: "Wrong" }),
+    }));
+    expect(response.status).toBe(409);
+
+    // The learner update runs first, so it must be rolled back with the enrolment.
+    const stored = await query("SELECT first_name FROM learners WHERE learner_id = $1", [a.learner_id]);
+    expect(stored.rows[0].first_name).toBe("Mismatch");
+  });
+
+  it("refuses a gender, class or academic year that does not exist", async () => {
+    const row = await createEditable("BadRef", "Edit");
+    const response = await PATCH(makeRequest("http://localhost/api/learners", {
+      method: "PATCH",
+      body: JSON.stringify({ learner_id: row.learner_id, enrolment_id: row.enrolment_id, gender_id: 999999999 }),
+    }));
+    expect(response.status).toBe(409);
+    expect((await readJson(response)).error).toContain("no longer exists");
+  });
+
+  it("refuses moving a learner into an academic year they are already enrolled in", async () => {
+    const row = await createEditable("YearClash", "Edit");
+    const [year2] = await createAcademicYear([{ school_id: SCHOOL_A, academic_year_name: "Test Year Clash", start_date: "2028-01-01", end_date: "2028-12-31" }]);
+
+    try {
+      // A second enrolment in the other year, so moving the first into it
+      // collides with enrolments' UNIQUE (learner_id, academic_year_id).
+      await query("INSERT INTO enrolments (learner_id, class_category_id, academic_year_id) VALUES ($1, $2, $3)", [row.learner_id, classA, year2.academic_year_id]);
+
+      const response = await PATCH(makeRequest("http://localhost/api/learners", {
+        method: "PATCH",
+        body: JSON.stringify({ learner_id: row.learner_id, enrolment_id: row.enrolment_id, academic_year_id: year2.academic_year_id }),
+      }));
+      expect(response.status).toBe(409);
+      expect((await readJson(response)).error).toContain("already has an enrolment");
+    } finally {
+      await query("DELETE FROM enrolments WHERE learner_id = $1 AND academic_year_id = $2", [row.learner_id, year2.academic_year_id]);
+      await query("DELETE FROM academic_years WHERE academic_year_id = $1", [year2.academic_year_id]);
+    }
+  });
+
+  it("rejects a body that is neither an object nor an array", async () => {
+    const response = await PATCH(makeRequest("http://localhost/api/learners", { method: "PATCH", body: JSON.stringify(42) }));
     expect(response.status).toBe(400);
   });
 });

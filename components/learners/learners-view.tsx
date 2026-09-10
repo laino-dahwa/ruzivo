@@ -2,18 +2,20 @@
 
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2 } from 'lucide-react';
+import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { useToast } from '../../app/components/hooks/use-toast';
 import { useCurrentSchoolId } from '../../lib/client/current-school-id';
 import { learnersApi } from '../../services/learners';
-import type { CreateLearnerInput, Learner } from '../../types/learner';
+import type { CreateLearnerInput, Learner, UpdateLearnerInput } from '../../types/learner';
 import { useSchoolReferenceData } from '../reference-data/use-school-reference-data';
 import { SectionHeading } from '../shared/section-heading';
 import { NoSchoolNotice } from '../shared/no-school-notice';
 import { ErrorNotice } from '../shared/error-notice';
 import { ConfirmDialog } from '../shared/confirm-dialog';
 import { DownloadPdfButton } from '../shared/download-pdf-button';
+import { AddRecordButton, FormDialog } from '../shared/form-dialog';
 import { LearnerAutocomplete } from './learner-autocomplete';
+import { EditLearnerDialog } from './edit-learner-dialog';
 
 // One entry in the bulk form. Values stay as strings while being typed (the
 // same as the original single-learner form) and are converted on submit.
@@ -38,6 +40,8 @@ export function LearnersView() {
   const [filters, setFilters] = useState({ learner_id: '', class_name: '', gender_name: '', academic_year: '' });
   const [rows, setRows] = useState<LearnerRow[]>([emptyLearnerRow()]);
   const [pendingDelete, setPendingDelete] = useState<Learner | null>(null);
+  const [editing, setEditing] = useState<Learner | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
 
   const learnersQuery = useQuery({
     queryKey: ['learners', filters],
@@ -53,12 +57,25 @@ export function LearnersView() {
     mutationFn: (inputs: CreateLearnerInput[]) => learnersApi.create(inputs),
     onSuccess: (_result, inputs) => {
       toast({ title: inputs.length === 1 ? 'Learner added' : `${inputs.length} learners added` });
+      setAddOpen(false);
       // Reset only on success — a failed submission keeps every row so the
       // user can fix the problem instead of retyping the whole batch.
       setRows([emptyLearnerRow()]);
       queryClient.invalidateQueries({ queryKey: ['learners'] });
     },
     onError: (error) => toast({ title: 'Could not add learners', description: (error as Error).message, variant: 'destructive' }),
+  });
+
+  const updateLearner = useMutation({
+    mutationFn: (input: UpdateLearnerInput) => learnersApi.update([input]),
+    onSuccess: () => {
+      toast({ title: 'Learner updated' });
+      setEditing(null);
+      queryClient.invalidateQueries({ queryKey: ['learners'] });
+    },
+    // The dialog stays open so the rejected value (a duplicate academic year,
+    // a reference row that has since been deleted) can be corrected in place.
+    onError: (error) => toast({ title: 'Could not update learner', description: (error as Error).message, variant: 'destructive' }),
   });
 
   const deleteLearner = useMutation({
@@ -96,12 +113,20 @@ export function LearnersView() {
 
   return (
     <>
-      <SectionHeading eyebrow="Learners" title="Learner records" detail="Fetched live from GET /api/learners. Filters map directly to the query parameters supported by the API." />
+      <SectionHeading
+        eyebrow="Learners"
+        title="Learner records"
+        detail="Fetched live from GET /api/learners. Filters map directly to the query parameters supported by the API."
+        action={schoolId ? <AddRecordButton label="Add learner" onClick={() => setAddOpen(true)} testId="button-open-add-learner" /> : undefined}
+      />
       {!schoolId ? <NoSchoolNotice /> : (
         <>
-          <div className="rounded-2xl border border-border/80 bg-card p-5">
-            <h3 className="text-sm font-semibold">{rows.length === 1 ? 'Add a learner' : `Add ${rows.length} learners`}</h3>
-            <form onSubmit={submit} className="mt-3 space-y-3">
+          <FormDialog
+            open={addOpen}
+            title={rows.length === 1 ? 'Add a learner' : `Add ${rows.length} learners`}
+            onClose={() => setAddOpen(false)}
+          >
+            <form onSubmit={submit} className="space-y-3">
               {rows.map((row, index) => (
                 <div key={index} className="space-y-2">
                   {rows.length > 1 && (
@@ -145,9 +170,9 @@ export function LearnersView() {
               <p className="mt-3 text-xs text-muted-foreground">Add at least one gender, class category and academic year in School setup before adding learners.</p>
             )}
             <ErrorNotice error={createLearner.error} />
-          </div>
+          </FormDialog>
 
-          <div className="mt-6 rounded-2xl border border-border/80 bg-card p-5">
+          <div className="rounded-2xl border border-border/80 bg-card p-5">
             <div className="flex flex-wrap items-end gap-2">
               <div className="w-56"><label className="mb-1 block text-[10px] font-semibold text-muted-foreground">Learner name</label><LearnerAutocomplete placeholder="Search by name…" onSelect={(learner) => setFilters((f) => ({ ...f, learner_id: learner?.learner_id ?? '' }))} /></div>
               <div><label className="mb-1 block text-[10px] font-semibold text-muted-foreground">Class</label><input value={filters.class_name} onChange={(e) => setFilters((f) => ({ ...f, class_name: e.target.value }))} placeholder="e.g. Grade 4" className="field h-9 w-36 text-xs" /></div>
@@ -183,6 +208,15 @@ export function LearnersView() {
                       <td className="px-3 py-2 text-right">
                         <button
                           type="button"
+                          title="Edit this learner"
+                          onClick={() => setEditing(learner)}
+                          className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
+                          data-testid={`button-edit-${learner.learner_id}`}
+                        >
+                          <Pencil size={14} />
+                        </button>
+                        <button
+                          type="button"
                           title="Delete this learner"
                           onClick={() => setPendingDelete(learner)}
                           className="rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
@@ -199,6 +233,15 @@ export function LearnersView() {
           </div>
         </>
       )}
+      <EditLearnerDialog
+        learner={editing}
+        genders={ref.genders.data}
+        classCategories={ref.classCategories.data}
+        academicYears={ref.academicYears.data}
+        pending={updateLearner.isPending}
+        onSave={(values) => updateLearner.mutate(values)}
+        onCancel={() => setEditing(null)}
+      />
       <ConfirmDialog
         open={!!pendingDelete}
         title="Delete this learner?"

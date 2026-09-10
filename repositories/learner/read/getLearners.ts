@@ -2,7 +2,16 @@ import { query } from "../../../lib/db";
 
 export async function getLearners(learner_id:string|null,class_name:string|null,gender_name:string|null,academic_year:string|null) {
     const result = await query(`
-        SELECT l.learner_id, l.first_name, l.last_name, g.gender_name, ay.academic_year_name AS curent_year , ca.class_name, e.enrolment_id
+        SELECT l.learner_id, l.first_name, l.last_name,
+               l.gender_id::int AS gender_id, g.gender_name,
+               -- date_of_birth is a DATE. Read back as a JS Date it picks up
+               -- the server's timezone offset and can render as the previous
+               -- day, so it is formatted in SQL and travels as a plain
+               -- YYYY-MM-DD string the edit form can use directly.
+               TO_CHAR(l.date_of_birth, 'YYYY-MM-DD') AS date_of_birth,
+               e.academic_year_id::int AS academic_year_id, ay.academic_year_name AS curent_year,
+               e.class_category_id::int AS class_category_id, ca.class_name,
+               e.enrolment_id::int AS enrolment_id
         FROM enrolments e 
         JOIN learners l 
         ON l.learner_id = e.learner_id

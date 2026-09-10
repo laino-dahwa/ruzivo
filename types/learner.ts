@@ -6,6 +6,12 @@ export type Learner = {
   curent_year: string;
   class_name: string;
   enrolment_id: number;
+  // Raw ids and the unformatted date accompany the display names so the edit
+  // form can preselect the learner's current values without a second fetch.
+  gender_id: number;
+  class_category_id: number;
+  academic_year_id: number;
+  date_of_birth: string;
 };
 
 export type CreateLearnerInput = {

@@ -19,6 +19,64 @@ export function validateLearners(records: Record<string, unknown>[]): RecordErro
   return errors;
 }
 
+/**
+ * Validation for the learner edit endpoint. `learner_id` and `enrolment_id`
+ * identify the record and are always required; every other field is optional
+ * and only checked when supplied, so a partial edit stays valid.
+ */
+export function validateLearnerUpdates(records: Record<string, unknown>[]): RecordError[] {
+  const errors: RecordError[] = [];
+  const seen = new Map<string, number>();
+
+  const EDITABLE = [
+    'first_name',
+    'last_name',
+    'gender_id',
+    'date_of_birth',
+    'class_category_id',
+    'academic_year_id',
+  ];
+
+  records.forEach((record, index) => {
+    requiredText(record.learner_id, 'learner_id', index, errors);
+    positiveId(record.enrolment_id, 'enrolment_id', index, errors);
+
+    // UPDATE ... FROM (VALUES ...) matches each target row against the values
+    // list, so the same learner twice in one batch has no defined winner.
+    if (typeof record.learner_id === 'string') {
+      const previous = seen.get(record.learner_id);
+      if (previous !== undefined) {
+        errors.push({
+          index,
+          field: 'learner_id',
+          message: `Duplicate of learner ${previous + 1} in the same request`,
+        });
+      } else {
+        seen.set(record.learner_id, index);
+      }
+    }
+
+    if (present(record.first_name)) requiredText(record.first_name, 'first_name', index, errors);
+    if (present(record.last_name)) requiredText(record.last_name, 'last_name', index, errors);
+    if (present(record.gender_id)) positiveId(record.gender_id, 'gender_id', index, errors);
+    if (present(record.class_category_id)) positiveId(record.class_category_id, 'class_category_id', index, errors);
+    if (present(record.academic_year_id)) positiveId(record.academic_year_id, 'academic_year_id', index, errors);
+    if (present(record.date_of_birth)) isoDate(record.date_of_birth, 'date_of_birth', index, errors);
+
+    // Without at least one editable field the request would report success
+    // while changing nothing, which reads as a silently ignored edit.
+    if (!EDITABLE.some((field) => present(record[field]))) {
+      errors.push({ index, field: 'first_name', message: 'No fields to update' });
+    }
+  });
+
+  return errors;
+}
+
+function present(value: unknown): boolean {
+  return value !== undefined && value !== null && value !== '';
+}
+
 export function validateExpenses(records: Record<string, unknown>[]): RecordError[] {
   const errors: RecordError[] = [];
   records.forEach((record, index) => {

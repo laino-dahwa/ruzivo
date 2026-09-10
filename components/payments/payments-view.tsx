@@ -15,6 +15,7 @@ import { NoSchoolNotice } from '../shared/no-school-notice';
 import { ErrorNotice } from '../shared/error-notice';
 import { ConfirmDialog } from '../shared/confirm-dialog';
 import { DownloadPdfButton } from '../shared/download-pdf-button';
+import { AddRecordButton, FormDialog } from '../shared/form-dialog';
 
 // One fee being paid: an income category and the amount paid towards it.
 // A learner block can hold several, which is what lets one learner pay for
@@ -56,6 +57,7 @@ export function PaymentsView() {
   });
   const [blocks, setBlocks] = useState<PaymentBlock[]>([emptyPaymentBlock()]);
   const [pendingDeletePayment, setPendingDeletePayment] = useState<Payment | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
 
   // Every line across every learner is one payment record.
   const totalPayments = blocks.reduce((count, block) => count + block.lines.length, 0);
@@ -130,6 +132,7 @@ export function PaymentsView() {
     onSuccess: (_result, inputs) => {
       const recorded = inputs.reduce((count, input) => count + input.income_categories.length, 0);
       toast({ title: recorded === 1 ? 'Payment recorded' : `${recorded} payments recorded` });
+      setAddOpen(false);
       // Reset only on success — a failed submission keeps every row so the
       // user can fix the problem instead of retyping the batch.
       setBlocks([emptyPaymentBlock()]);
@@ -217,12 +220,22 @@ export function PaymentsView() {
 
   return (
     <>
-      <SectionHeading eyebrow="Payments" title="Payments" detail="Payments are created as charges + allocations via POST /api/learners/payments." />
+      <SectionHeading
+        eyebrow="Payments"
+        title="Payments"
+        detail="Payments are created as charges + allocations via POST /api/learners/payments."
+        action={schoolId ? <AddRecordButton label="Record payment" onClick={() => setAddOpen(true)} testId="button-open-record-payment" /> : undefined}
+      />
       {!schoolId ? <NoSchoolNotice /> : (
         <>
-          <div className="rounded-2xl border border-border/80 bg-card p-5">
-            <h3 className="text-sm font-semibold">{totalPayments === 1 ? 'Record a payment' : `Record ${totalPayments} payments`}</h3>
-            <form onSubmit={submitPayment} className="mt-3 space-y-4">
+          <FormDialog
+            open={addOpen}
+            width="xl"
+            title={totalPayments === 1 ? 'Record a payment' : `Record ${totalPayments} payments`}
+            description="Uses the first available academic year record. Enrolment ID fills in automatically once a learner is selected."
+            onClose={() => setAddOpen(false)}
+          >
+            <form onSubmit={submitPayment} className="space-y-4">
               {blocks.map((block, blockIndex) => (
                 <div key={blockIndex} className="space-y-2 rounded-xl border border-border/60 p-3">
                   <div className="flex items-center justify-between">
@@ -322,11 +335,10 @@ export function PaymentsView() {
                 <button type="submit" disabled={recordPayment.isPending} className="button-lift flex h-10 items-center justify-center gap-2 rounded-lg bg-primary text-xs font-semibold text-primary-foreground disabled:opacity-60 lg:col-span-2"><Plus size={15} />{submitLabel}</button>
               </div>
             </form>
-            <p className="mt-2 text-[11px] text-muted-foreground">Uses the first available academic year record. Enrolment ID fills in automatically once a learner is selected.</p>
             <ErrorNotice error={recordPayment.error} />
-          </div>
+          </FormDialog>
 
-          <div className="mt-6 rounded-2xl border border-border/80 bg-card p-5">
+          <div className="rounded-2xl border border-border/80 bg-card p-5">
             <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div><label className="mb-1 block text-[10px] font-semibold text-muted-foreground">Learner name</label><LearnerAutocomplete placeholder="Search by name…" onSelect={(learner) => setFilters((f) => ({ ...f, learner_id: learner?.learner_id ?? '' }))} /></div>
               <div><label className="mb-1 block text-[10px] font-semibold text-muted-foreground">Class</label><input value={filters.class_name} onChange={(e) => setFilters((f) => ({ ...f, class_name: e.target.value }))} placeholder="e.g. Grade 4" className="field h-9 text-xs" /></div>

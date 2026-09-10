@@ -2,10 +2,10 @@ import { NextResponse } from "next/server";
 import {getLearners} from "../../../repositories/learner/read/getLearners"
 import { URLSearchParams } from "url";
 import { createLearners } from "@/repositories/learner/create/addLearner";
-import { updateLearners } from "@/repositories/learner/update/updateLearner";
+import { LearnerUpdateError, updateLearners } from "@/repositories/learner/update/updateLearner";
 import { deleteLearner } from "@/repositories/learner/delete/deleteLearner";
 import { normalizeToArray, validationErrorBody } from "../../../lib/validation/bulk";
-import { validateLearners } from "../../../lib/validation/entities";
+import { validateLearners, validateLearnerUpdates } from "../../../lib/validation/entities";
 import { isPdfFormat } from "../../../lib/reportRequest";
 import { tablePdfResponse } from "../../../lib/pdf/tablePdfResponse";
 
@@ -132,28 +132,49 @@ export async function POST(request:Request){
 export async function PATCH(request:Request){
     try{
         const body = await request.json()
-       
-         if(!Array.isArray(body)){
+
+        // Accepts a single learner object or an array of them, matching POST.
+        const records = normalizeToArray(body)
+
+        if(!records){
             return NextResponse.json(
                 {
-                    error:"Request body must be an array of learners"
+                    error:"Request body must be a learner object or an array of learners"
                 },
                 {
                     status: 400
                 }
             )
         }
-       
-     
-        const schools = await updateLearners(body)
 
-        return NextResponse.json(
-            schools,
-            {
-                status:201
-            }
-        )
+        if(records.length === 0){
+            return NextResponse.json({ learners: [], enrolments: [] })
+        }
+
+        const errors = validateLearnerUpdates(records)
+
+        if(errors.length > 0){
+            return NextResponse.json(
+                validationErrorBody(errors, "Learner"),
+                { status: 400 }
+            )
+        }
+
+        const updated = await updateLearners(records as unknown as Parameters<typeof updateLearners>[0])
+
+        return NextResponse.json(updated)
+
     }catch(error){
+        // A refused edit (unknown learner, duplicate enrolment year, missing
+        // reference row) is the caller's to fix, so it carries its reason
+        // rather than being flattened into a generic failure.
+        if(error instanceof LearnerUpdateError){
+            return NextResponse.json(
+                { error: error.message },
+                { status: 409 }
+            )
+        }
+
         console.error("Learner Update Failed :",error)
 
         return NextResponse.json(
