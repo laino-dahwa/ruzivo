@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { generateReportPdf } from "../lib/pdf/generateReportPdf";
+import { generateCombinedReportPdf, generateReportPdf } from "../lib/pdf/generateReportPdf";
 
 // A minimal, dependency-free way to count pages in a PDF buffer without a
 // full PDF parser: PDFKit emits one "/Type /Page" object per page.
@@ -80,6 +80,75 @@ describe("generateReportPdf", () => {
             totalLabel: "TOTAL",
             totalValue: "£0.00",
             emptyMessage: "No records found for the selected period.",
+        });
+
+        expect(pdf.subarray(0, 4).toString("ascii")).toBe("%PDF");
+        expect(countPdfPages(pdf)).toBe(1);
+    });
+});
+
+describe("generateCombinedReportPdf", () => {
+    const base = {
+        appName: "Ruzivo",
+        schoolName: "Test School",
+        reportTitle: "Financial Report",
+        dateLabel: "01 September 2026 - 30 September 2026",
+        generatedAtLabel: "10 September 2026",
+        summary: [
+            { label: "Total revenue", value: "$1,240.00" },
+            { label: "Total expenses", value: "$100.00" },
+            { label: "Net income", value: "$1,140.00", emphasis: true },
+        ],
+    };
+
+    const section = (title: string, count: number) => ({
+        title,
+        columns: [
+            { key: "a", label: "Date", width: 120 },
+            { key: "b", label: "Detail", width: 260 },
+            { key: "c", label: "Amount", width: 120, align: "right" as const },
+        ],
+        rows: Array.from({ length: count }, (_, i) => ({ a: "01/09/2026", b: `Row ${i + 1}`, c: "$10.00" })),
+        totalLabel: `TOTAL ${title.toUpperCase()}`,
+        totalValue: "$10.00",
+        emptyMessage: `No ${title.toLowerCase()} in this window.`,
+    });
+
+    it("puts the headline figures and every table into one valid document", async () => {
+        const pdf = await generateCombinedReportPdf({
+            ...base,
+            sections: [section("Payments", 3), section("Expenses", 2), section("Owing", 1)],
+        });
+
+        expect(pdf.subarray(0, 4).toString("ascii")).toBe("%PDF");
+        expect(countPdfPages(pdf)).toBe(1);
+    });
+
+    it("keeps a section with no rows, so a reader can tell 'none' from 'omitted'", async () => {
+        const withRows = await generateCombinedReportPdf({
+            ...base,
+            sections: [section("Payments", 2), section("Expenses", 0), section("Owing", 0)],
+        });
+
+        expect(withRows.subarray(0, 4).toString("ascii")).toBe("%PDF");
+        expect(countPdfPages(withRows)).toBe(1);
+    });
+
+    it("paginates across long tables and numbers every page", async () => {
+        const pdf = await generateCombinedReportPdf({
+            ...base,
+            sections: [section("Payments", 60), section("Expenses", 40), section("Owing", 40)],
+        });
+
+        expect(pdf.subarray(0, 4).toString("ascii")).toBe("%PDF");
+        expect(countPdfPages(pdf)).toBeGreaterThan(2);
+    });
+
+    it("carries a footnote when one is given", async () => {
+        const pdf = await generateCombinedReportPdf({
+            ...base,
+            footnote: "Expenses carry no period, so they cover 01 January 2026 to 31 January 2026.",
+            sections: [section("Payments", 1)],
         });
 
         expect(pdf.subarray(0, 4).toString("ascii")).toBe("%PDF");

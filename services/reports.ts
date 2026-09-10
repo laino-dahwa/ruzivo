@@ -29,6 +29,9 @@ export const reportsApi = {
     request<ReportOverview>(`/api/schools/${schoolId}/reports/overview?${reportScopeParams(scope)}`),
   downloadScopedPdf: (schoolId: string, type: ReportType, scope: Parameters<typeof reportScopeParams>[0], filename: string) =>
     downloadPdfFrom(`/api/schools/${schoolId}/reports/${type}?${reportScopeParams(scope)}&format=pdf`, filename),
+  /** The whole window as one document: headline figures plus all three tables. */
+  downloadFullReport: (schoolId: string, scope: Parameters<typeof reportScopeParams>[0], filename: string) =>
+    downloadPdfFrom(`/api/schools/${schoolId}/reports/full?${reportScopeParams(scope)}`, filename),
   summary: (schoolId: string, date: ReportDate) =>
     request<ReportSummary>(`/api/schools/${schoolId}/reports/summary?${reportDateParam(date)}`),
   payments: (schoolId: string, date: ReportDate) =>

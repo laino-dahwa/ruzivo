@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowDownLeft, ArrowUpRight, CircleDollarSign, Download, Scale } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, CircleDollarSign, Download, FileText, Scale } from 'lucide-react';
 import { useToast } from '../../app/components/hooks/use-toast';
 import { useCurrentSchoolId } from '../../lib/client/current-school-id';
 import { currentAcademicYear } from '../../lib/client/current-academic-year';
@@ -48,6 +48,7 @@ export function ReportsView() {
   const [end, setEnd] = useState(today);
   const [periodId, setPeriodId] = useState('');
   const [downloading, setDownloading] = useState<ReportType | null>(null);
+  const [downloadingFull, setDownloadingFull] = useState(false);
 
   // Dates a period report's expenses against the year in progress; the first
   // record in the list is the oldest year the school ever created.
@@ -93,6 +94,19 @@ export function ReportsView() {
       toast({ title: 'Could not generate PDF', description: (error as Error).message, variant: 'destructive' });
     } finally {
       setDownloading(null);
+    }
+  };
+
+  const downloadFull = async () => {
+    if (!schoolId || incomplete || rangeInverted) return;
+    setDownloadingFull(true);
+    try {
+      await reportsApi.downloadFullReport(schoolId, scope, `financial-report-${mode}.pdf`);
+      toast({ title: 'Report downloaded' });
+    } catch (error) {
+      toast({ title: 'Could not generate the report', description: (error as Error).message, variant: 'destructive' });
+    } finally {
+      setDownloadingFull(false);
     }
   };
 
@@ -154,9 +168,22 @@ export function ReportsView() {
                 </div>
               )}
 
-              <p className="ml-auto text-xs font-semibold text-foreground" data-testid="text-report-scope">
+              {/* Grouped so the label and the button wrap together and stay
+                  with the criteria they describe. */}
+              <div className="ml-auto flex flex-wrap items-center justify-end gap-3">
+              <p className="text-xs font-semibold text-foreground" data-testid="text-report-scope">
                 Showing: {scopeLabel}
               </p>
+              <button
+                type="button"
+                onClick={downloadFull}
+                disabled={downloadingFull || incomplete || rangeInverted}
+                data-testid="button-download-full-report"
+                className="button-lift flex h-9 items-center gap-2 rounded-lg bg-primary px-4 text-xs font-semibold text-primary-foreground disabled:opacity-60"
+              >
+                <FileText size={14} />{downloadingFull ? 'Preparing…' : 'Download full report'}
+              </button>
+              </div>
             </div>
 
             {rangeInverted && (
