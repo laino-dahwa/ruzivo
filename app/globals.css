@@ -128,6 +128,80 @@
 .field { height: 40px; width: 100%; border-radius: .5rem; border: 1px solid hsl(var(--input)); background: hsl(var(--background)); padding: 0 .75rem; font-size: .875rem; outline: none; transition: border-color .18s ease, box-shadow .18s ease; }
 .field:focus { border-color: hsl(var(--primary)); box-shadow: 0 0 0 3px hsl(var(--primary) / .14); }
 .field::placeholder { color: hsl(var(--muted-foreground) / .72); }
+
+/* A native <select> popup takes its highlight from the OS accent colour, which
+   lands as Windows blue in the middle of this palette. Chromium 135+ lets the
+   picker itself be styled, so the highlight becomes the same terracotta as the
+   buttons; engines without it keep the native popup and pick up the option
+   colours below, which is why both are here. */
+select.field { accent-color: hsl(var(--primary)); }
+select.field option:checked,
+select.field option:hover {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+
+@supports (appearance: base-select) {
+  select.field,
+  select.field::picker(select) { appearance: base-select; }
+
+  select.field {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .5rem;
+    text-align: left;
+    /* base-select renders the chosen label as flow content, so a long one
+       ("Payment method…") wraps to a second line and pushes the control out of
+       its row. A native select clips instead, which is what this restores. */
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  /* base-select swaps the native chevron for a heavier triangle. Masking the
+     same chevron back in keeps the closed control looking unchanged, and a
+     mask (rather than a coloured SVG) keeps the arrow on the theme token. */
+  select.field::picker-icon {
+    color: transparent;
+    width: .85rem;
+    height: .85rem;
+    flex: none;
+    background-color: hsl(var(--muted-foreground));
+    -webkit-mask: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='black'%20stroke-width='2.5'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpath%20d='m6%209%206%206%206-6'/%3E%3C/svg%3E") center / contain no-repeat;
+    mask: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='black'%20stroke-width='2.5'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpath%20d='m6%209%206%206%206-6'/%3E%3C/svg%3E") center / contain no-repeat;
+    transition: transform .18s ease;
+  }
+  select.field:open::picker-icon { transform: rotate(180deg); }
+
+  select.field::picker(select) {
+    border: 1px solid hsl(var(--border));
+    border-radius: .5rem;
+    background: hsl(var(--popover));
+    padding: .25rem;
+    box-shadow: 0 10px 30px rgb(0 0 0 / .12);
+  }
+  select.field option {
+    border-radius: .375rem;
+    /* Inherited so the compact `field h-9 text-xs` filters get a picker at
+       their own size rather than the default 14px. */
+    font: inherit;
+    /* base-select reserves a gutter for the tick shown against the selected
+       option; without it every label sits oddly far from the left edge. */
+    padding: .375rem .5rem;
+  }
+  select.field option::checkmark { display: none; }
+  /* The current value is marked quietly. Opening the picker focuses it, so
+     giving it the terracotta too would light up two rows at once — the one
+     under the pointer and the one already chosen. */
+  select.field option:checked { background: hsl(var(--secondary)); }
+  select.field option:hover,
+  select.field option:focus-visible {
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+    /* Chromium draws a dark ring on the active option, which reads as a
+       second, competing highlight next to the terracotta fill. */
+    outline: none;
+  }
+}
 .nav-link { transition: background-color .18s ease, color .18s ease; }
 .nav-link svg { transition: transform .18s ease; }
 .nav-link:hover svg { transform: translateX(2px); }
