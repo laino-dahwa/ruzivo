@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2 } from 'lucide-react';
 import { useToast } from '../../app/components/hooks/use-toast';
 import { useCurrentSchoolId } from '../../lib/client/current-school-id';
+import { currentAcademicYear } from '../../lib/client/current-academic-year';
 import { formatCurrency } from '../../lib/currency';
 import { balancesApi, paymentsApi } from '../../services/payments';
 import type { CreateChargesWithPaymentsInput, Payment } from '../../types/payment';
@@ -68,25 +69,12 @@ export function PaymentsView() {
   // Every line across every learner is one payment record.
   const totalPayments = blocks.reduce((count, block) => count + block.lines.length, 0);
 
-  /**
-   * The academic year covering today. Falls back to a record simply named for
-   * the current year (a year whose end_date has already passed still needs to
-   * accept payments), and finally to the first record so a school that has not
-   * dated its years keeps working as before.
-   */
-  const currentAcademicYearId = useMemo(() => {
-    const years = ref.academicYears.data;
-    if (!years?.length) return undefined;
-
-    const today = new Date();
-    const covering = years.find((year) => {
-      const start = new Date(year.start_date);
-      const end = new Date(year.end_date);
-      return !Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && today >= start && today <= end;
-    });
-    const named = years.find((year) => String(year.academic_year_name ?? '').trim() === String(today.getFullYear()));
-    return (covering ?? named ?? years[0]).academic_year_id;
-  }, [ref.academicYears.data]);
+  // Shared with the Reports page, which dates a period report's expenses the
+  // same way.
+  const currentAcademicYearId = useMemo(
+    () => currentAcademicYear(ref.academicYears.data)?.academic_year_id,
+    [ref.academicYears.data],
+  );
 
   const currentAcademicYearName = ref.academicYears.data?.find(
     (year) => year.academic_year_id === currentAcademicYearId,

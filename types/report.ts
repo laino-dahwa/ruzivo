@@ -44,3 +44,32 @@ export type ReportSummary = {
 };
 
 export type ReportType = 'payments' | 'owing' | 'expenses';
+
+export type CategoryTotal = { name: string; total: number };
+export type DailyTotal = { date: string; income: number; expenses: number };
+
+export type ReportBreakdown = {
+  incomeByCategory: CategoryTotal[];
+  expensesByCategory: CategoryTotal[];
+  daily: DailyTotal[];
+};
+
+/** What a report covers. A single day is a range whose ends are the same. */
+export type ReportScope = {
+  start: string | null;
+  end: string | null;
+  paymentPeriodId: number | null;
+};
+
+/** Everything one report needs, for one window, in a single response. */
+export type ReportOverview = {
+  scope: ReportScope;
+  expenseWindow: { start: string; end: string } | null;
+  /** False when a period could not be turned into dates for expenses. */
+  expensesScopedByPeriod: boolean;
+  summary: ReportSummary;
+  payments: { rows: PaymentReportRow[]; total: number };
+  owing: { rows: OwingReportRow[]; total: number };
+  expenses: { rows: ExpenseReportRow[]; total: number };
+  breakdown: ReportBreakdown;
+};

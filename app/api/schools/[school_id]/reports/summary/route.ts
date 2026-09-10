@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getReportSummary } from "../../../../../../repositories/report/getReportSummary";
-import { parseReportDate } from "../../../../../../lib/reportRequest";
+import { parseReportDate, parseReportScope } from "../../../../../../lib/reportRequest";
 
 export const runtime = "nodejs";
 
@@ -13,12 +13,13 @@ export async function GET(request: Request, { params }: Params) {
         const { school_id } = await params;
         const { searchParams } = new URL(request.url);
 
-        const { date, error } = parseReportDate(searchParams);
+        const { error } = parseReportDate(searchParams);
+        const { scope } = parseReportScope(searchParams);
         if (error) {
             return NextResponse.json({ error }, { status: 400 });
         }
 
-        const summary = await getReportSummary(school_id, date);
+        const summary = await getReportSummary(school_id, scope!);
         return NextResponse.json(summary);
     } catch (error) {
         console.error("Report Summary Failed :", error);

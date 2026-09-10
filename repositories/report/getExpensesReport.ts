@@ -1,4 +1,5 @@
 import { query } from "../../lib/db";
+import { dateWindow, type ReportScope } from "../../lib/reports/scope";
 
 export type ExpenseReportRow = {
     expense_id: number;
@@ -8,7 +9,17 @@ export type ExpenseReportRow = {
     amount: string;
 };
 
-export async function getExpensesReport(school_id: string, report_date: string | null) {
+// Expenses are dated but carry no payment period, so only the date bounds
+// apply here. A period-scoped report converts its period to a calendar window
+// before calling this — see expenseWindowForPeriod.
+const WHERE = `
+    ec.school_id = $1
+    AND ${dateWindow("e.expense_date")}
+`;
+
+export async function getExpensesReport(school_id: string, scope: ReportScope) {
+    const params = [school_id, scope.start, scope.end];
+
     const rowsResult = await query(
         `
         SELECT
@@ -19,11 +30,10 @@ export async function getExpensesReport(school_id: string, report_date: string |
             e.amount
         FROM expenses e
         JOIN expense_categories ec ON ec.expense_category_id = e.expense_category_id
-        WHERE ec.school_id = $1
-          AND ($2::date IS NULL OR e.expense_date = $2::date)
+        WHERE ${WHERE}
         ORDER BY e.expense_date ASC
         `,
-        [school_id, report_date]
+        params
     );
 
     const totalResult = await query(
@@ -31,10 +41,9 @@ export async function getExpensesReport(school_id: string, report_date: string |
         SELECT COALESCE(SUM(e.amount), 0) AS total
         FROM expenses e
         JOIN expense_categories ec ON ec.expense_category_id = e.expense_category_id
-        WHERE ec.school_id = $1
-          AND ($2::date IS NULL OR e.expense_date = $2::date)
+        WHERE ${WHERE}
         `,
-        [school_id, report_date]
+        params
     );
 
     return {

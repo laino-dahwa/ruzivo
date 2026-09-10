@@ -1,5 +1,6 @@
 import { query } from "../../lib/db";
 import { REPORT_TIMEZONE } from "../../lib/reportTimezone";
+import { dateWindow, periodFilter, scopeParams, timestampWindow, type ReportScope } from "../../lib/reports/scope";
 
 export type ReportSummary = {
     totalPayments: number;
@@ -8,7 +9,19 @@ export type ReportSummary = {
     netPosition: number;
 };
 
-export async function getReportSummary(school_id: string, report_date: string | null): Promise<ReportSummary> {
+/**
+ * `expenseScope` is separate because expenses carry no payment period: a
+ * period-scoped report filters payments and owing by the period itself, and
+ * expenses by the calendar window that period names. Applying one window to
+ * both would drop a payment billed to January but taken in March.
+ */
+export async function getReportSummary(
+    school_id: string,
+    scope: ReportScope,
+    expenseScope: ReportScope = scope,
+): Promise<ReportSummary> {
+    const params = [...scopeParams(school_id, scope), REPORT_TIMEZONE];
+
     const paymentsResult = await query(
         `
         SELECT COALESCE(SUM(amount), 0) AS total
@@ -19,10 +32,11 @@ export async function getReportSummary(school_id: string, report_date: string | 
             JOIN charges c ON c.charge_id = pa.charge_id
             JOIN learners l ON l.learner_id = c.learner_id
             WHERE l.school_id = $1
-              AND ($2::date IS NULL OR (p.paid_at AT TIME ZONE $3)::date = $2::date)
+              AND ${timestampWindow("p.paid_at")}
+              AND ${periodFilter()}
         ) AS distinct_payments
         `,
-        [school_id, report_date, REPORT_TIMEZONE]
+        params
     );
 
     const owingResult = await query(
@@ -40,25 +54,28 @@ export async function getReportSummary(school_id: string, report_date: string | 
             LEFT JOIN payment_allocations pa ON pa.charge_id = c.charge_id
             LEFT JOIN payments p ON p.payment_id = pa.payment_id
             WHERE l.school_id = $1
-              AND ($2::date IS NULL OR (c.created_at AT TIME ZONE $3)::date = $2::date)
+              AND ${timestampWindow("c.created_at")}
+              AND ${periodFilter()}
             GROUP BY l.learner_id, ic.income_category_id, ic.income_limit,
                      c.payment_period_id, c.academic_year_id
             HAVING ic.income_limit - COALESCE(SUM(p.amount), 0) > 0
         )
         SELECT COALESCE(SUM(balance), 0) AS total FROM owing
         `,
-        [school_id, report_date, REPORT_TIMEZONE]
+        params
     );
 
+    // Expenses carry no payment period, so only the date bounds apply — a
+    // period-scoped report converts its period to a calendar window first.
     const expensesResult = await query(
         `
         SELECT COALESCE(SUM(e.amount), 0) AS total
         FROM expenses e
         JOIN expense_categories ec ON ec.expense_category_id = e.expense_category_id
         WHERE ec.school_id = $1
-          AND ($2::date IS NULL OR e.expense_date = $2::date)
+          AND ${dateWindow("e.expense_date")}
         `,
-        [school_id, report_date]
+        [school_id, expenseScope.start, expenseScope.end]
     );
 
     const totalPayments = Number(paymentsResult.rows[0]?.total ?? 0);

@@ -1,5 +1,6 @@
 import { query } from "../../lib/db";
 import { REPORT_TIMEZONE } from "../../lib/reportTimezone";
+import { periodFilter, scopeParams, timestampWindow, type ReportScope } from "../../lib/reports/scope";
 
 export type OwingReportRow = {
     charge_id: number;
@@ -28,7 +29,7 @@ const OWING_CTE = `
     WITH owing AS (
         SELECT
             MIN(c.charge_id) AS charge_id,
-            ((MIN(c.created_at) AT TIME ZONE $3)::date)::text AS charge_date,
+            ((MIN(c.created_at) AT TIME ZONE $5)::date)::text AS charge_date,
             l.learner_id,
             l.first_name,
             l.last_name,
@@ -49,7 +50,8 @@ const OWING_CTE = `
         LEFT JOIN payment_allocations pa ON pa.charge_id = c.charge_id
         LEFT JOIN payments p ON p.payment_id = pa.payment_id
         WHERE l.school_id = $1
-          AND ($2::date IS NULL OR (c.created_at AT TIME ZONE $3)::date = $2::date)
+          AND ${timestampWindow("c.created_at")}
+          AND ${periodFilter()}
         GROUP BY
             l.learner_id, l.first_name, l.last_name,
             ca.class_name, ic.income_category_id, ic.income_name, ic.income_limit,
@@ -59,7 +61,9 @@ const OWING_CTE = `
     )
 `;
 
-export async function getOwingReport(school_id: string, report_date: string | null) {
+export async function getOwingReport(school_id: string, scope: ReportScope) {
+    const params = [...scopeParams(school_id, scope), REPORT_TIMEZONE];
+
     const rowsResult = await query(
         `
         ${OWING_CTE}
@@ -67,7 +71,7 @@ export async function getOwingReport(school_id: string, report_date: string | nu
         FROM owing
         ORDER BY charge_date ASC, learner_id ASC
         `,
-        [school_id, report_date, REPORT_TIMEZONE]
+        params
     );
 
     const totalResult = await query(
@@ -76,7 +80,7 @@ export async function getOwingReport(school_id: string, report_date: string | nu
         SELECT COALESCE(SUM(balance), 0) AS total
         FROM owing
         `,
-        [school_id, report_date, REPORT_TIMEZONE]
+        params
     );
 
     const rows: OwingReportRow[] = rowsResult.rows.map((row) => ({

@@ -3,7 +3,8 @@ import { getOwingReport } from "../../../../../../repositories/report/getOwingRe
 import { getschool } from "../../../../../../repositories/school/read/getSchool";
 import { generateReportPdf } from "../../../../../../lib/pdf/generateReportPdf";
 import { formatCurrency } from "../../../../../../lib/currency";
-import { parseReportDate, formatDateLabel, isPdfFormat } from "../../../../../../lib/reportRequest";
+import { parseReportDate, parseReportScope, formatDateLabel, isPdfFormat } from "../../../../../../lib/reportRequest";
+import { reportScopeLabel } from "../../../../../../lib/reports/scopeLabel";
 
 export const runtime = "nodejs";
 
@@ -17,11 +18,12 @@ export async function GET(request: Request, { params }: Params) {
         const { searchParams } = new URL(request.url);
 
         const { date, error } = parseReportDate(searchParams);
+        const { scope } = parseReportScope(searchParams);
         if (error) {
             return NextResponse.json({ error }, { status: 400 });
         }
 
-        const { rows, total } = await getOwingReport(school_id, date);
+        const { rows, total } = await getOwingReport(school_id, scope!);
 
         if (isPdfFormat(searchParams)) {
             const schools = await getschool(school_id);
@@ -31,12 +33,12 @@ export async function GET(request: Request, { params }: Params) {
                 appName: "Ruzivo",
                 schoolName,
                 reportTitle: "Owing / Outstanding Report",
-                dateLabel: formatDateLabel(date),
+                dateLabel: await reportScopeLabel(school_id, scope!),
                 generatedAtLabel: formatDateLabel(new Date().toISOString().slice(0, 10)),
                 columns: [
                     { key: "learner", label: "Student", width: 115 },
                     { key: "account", label: "Account", width: 55 },
-                    { key: "income", label: "Fee", width: 75 },
+                    { key: "income", label: "Income", width: 75 },
                     { key: "expected", label: "Expected", width: 68, align: "right" },
                     { key: "paid", label: "Paid", width: 62, align: "right" },
                     { key: "balance", label: "Outstanding", width: 72, align: "right" },

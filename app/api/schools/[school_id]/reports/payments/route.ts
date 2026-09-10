@@ -3,7 +3,8 @@ import { getPaymentsReport } from "../../../../../../repositories/report/getPaym
 import { getschool } from "../../../../../../repositories/school/read/getSchool";
 import { generateReportPdf } from "../../../../../../lib/pdf/generateReportPdf";
 import { formatCurrency } from "../../../../../../lib/currency";
-import { parseReportDate, formatDateLabel, isPdfFormat } from "../../../../../../lib/reportRequest";
+import { parseReportDate, parseReportScope, formatDateLabel, isPdfFormat } from "../../../../../../lib/reportRequest";
+import { reportScopeLabel } from "../../../../../../lib/reports/scopeLabel";
 
 export const runtime = "nodejs";
 
@@ -17,11 +18,12 @@ export async function GET(request: Request, { params }: Params) {
         const { searchParams } = new URL(request.url);
 
         const { date, error } = parseReportDate(searchParams);
+        const { scope } = parseReportScope(searchParams);
         if (error) {
             return NextResponse.json({ error }, { status: 400 });
         }
 
-        const { rows, total } = await getPaymentsReport(school_id, date);
+        const { rows, total } = await getPaymentsReport(school_id, scope!);
 
         if (isPdfFormat(searchParams)) {
             const schools = await getschool(school_id);
@@ -31,19 +33,23 @@ export async function GET(request: Request, { params }: Params) {
                 appName: "Ruzivo",
                 schoolName,
                 reportTitle: "Payments Report",
-                dateLabel: formatDateLabel(date),
+                dateLabel: await reportScopeLabel(school_id, scope!),
                 generatedAtLabel: formatDateLabel(new Date().toISOString().slice(0, 10)),
                 columns: [
-                    { key: "date", label: "Date", width: 85 },
-                    { key: "customer", label: "Customer", width: 150 },
-                    { key: "class", label: "Class", width: 80 },
-                    { key: "method", label: "Method", width: 85 },
-                    { key: "amount", label: "Amount", width: 95, align: "right" },
+                    { key: "date", label: "Date", width: 75 },
+                    { key: "customer", label: "Customer", width: 130 },
+                    { key: "class", label: "Class", width: 62 },
+                    // Which fee the money was paid towards — already fetched
+                    // for the on-screen table, previously dropped from the PDF.
+                    { key: "income", label: "Income", width: 90 },
+                    { key: "method", label: "Method", width: 70 },
+                    { key: "amount", label: "Amount", width: 88, align: "right" },
                 ],
                 rows: rows.map((row) => ({
                     date: row.paid_at_local.slice(0, 10).split("-").reverse().join("/"),
                     customer: `${row.first_name} ${row.last_name}`,
                     class: row.class_name,
+                    income: row.income_name,
                     method: row.method_name,
                     amount: formatCurrency(row.amount),
                 })),
