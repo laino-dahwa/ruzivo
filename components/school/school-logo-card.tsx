@@ -127,7 +127,7 @@ export function SchoolLogoCard({ schoolId }: { schoolId: string }) {
       <ConfirmDialog
         open={confirmRemove}
         title="Remove this logo?"
-        description="The tab, taskbar and reports go back to the default Ruzivo mark."
+        description="The tab, taskbar and reports go back to the default SSV Admin mark."
         confirmLabel="Remove"
         pending={remove.isPending}
         onCancel={() => setConfirmRemove(false)}

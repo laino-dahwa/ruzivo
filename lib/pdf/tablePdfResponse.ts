@@ -25,7 +25,7 @@ export async function tablePdfResponse(options: TablePdfOptions): Promise<NextRe
     const generatedOn = new Date().toISOString().slice(0, 10);
 
     const pdf = await generateReportPdf({
-        appName: "Ruzivo",
+        appName: "SSV Admin",
         schoolName: options.schoolName,
         reportTitle: options.title,
         generatedAtLabel: formatDateLabel(generatedOn),

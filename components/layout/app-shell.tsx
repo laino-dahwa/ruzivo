@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, type ReactNode } from 'react';
-import { CalendarDays, Menu, WalletCards, X } from 'lucide-react';
+import { CalendarDays, Menu, X } from 'lucide-react';
 import { useCurrentSchoolId } from '../../lib/client/current-school-id';
 import { useSchoolLogo } from '../../lib/client/use-school-logo';
 import { useSchoolName } from '../../lib/client/use-school-name';
@@ -37,7 +37,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className="grain min-h-[100dvh] bg-background md:flex">
       <UpdateNotice />
       <SchoolBranding />
-      <aside className={`fixed inset-y-0 left-0 z-40 w-[254px] bg-sidebar px-5 py-6 text-sidebar-foreground transition-transform duration-300 md:relative md:translate-x-0 ${mobileNav ? 'translate-x-0' : '-translate-x-full'}`}>
+      <aside className={`fixed inset-y-0 left-0 z-40 w-[254px] overflow-y-auto bg-sidebar px-5 py-6 text-sidebar-foreground transition-transform duration-300 md:translate-x-0 ${mobileNav ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex h-full flex-col">
           {/* The close button is positioned rather than laid out beside the
               brand, so the brand can be a centred stack across the full width. */}
@@ -47,7 +47,8 @@ export function AppShell({ children }: { children: ReactNode }) {
                 {schoolId && hasLogo
                   // eslint-disable-next-line @next/next/no-img-element -- served from an API route, not a static asset
                   ? <img src={schoolLogoUrl(schoolId, { size: 128, stamp })} alt="" className="h-full w-full object-contain" />
-                  : <WalletCards size={30} strokeWidth={2.1} />}
+                  // eslint-disable-next-line @next/next/no-img-element -- kept a plain img, consistent with the school logo above
+                  : <img src="/branding/logo/logo.png" alt="" className="h-full w-full object-contain" />}
               </span>
               <span className="w-full">
                 {/* No truncation: the whole name is shown however long it is.
@@ -81,14 +82,14 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </aside>
       {mobileNav && <button type="button" aria-label="Close menu overlay" onClick={() => setMobileNav(false)} className="fixed inset-0 z-30 bg-black/20 md:hidden" data-testid="button-menu-overlay" />}
-      <main className="min-w-0 flex-1">
+      <main className="min-w-0 flex-1 md:ml-[254px]">
         <header className="flex h-[76px] items-center justify-between border-b border-border/70 px-5 md:px-10">
           <div className="flex items-center gap-3">
             <button type="button" onClick={() => setMobileNav(true)} className="rounded-lg p-2 text-muted-foreground md:hidden" aria-label="Open navigation" data-testid="button-open-navigation"><Menu size={20} /></button>
             <div className="hidden items-center gap-2 text-xs text-muted-foreground sm:flex"><span data-testid="text-breadcrumb-name">{schoolName}</span><span className="text-border">/</span><span className="text-foreground">Live data from your API</span></div>
           </div>
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-secondary text-xs font-semibold text-secondary-foreground" data-testid="avatar-user">RZ</div>
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-secondary text-xs font-semibold text-secondary-foreground" data-testid="avatar-user">{schoolId ? schoolId.toUpperCase() : 'RZ'}</div>
           </div>
         </header>
         <div className="mx-auto max-w-[1380px] px-5 py-8 md:px-10 md:py-10">{children}</div>

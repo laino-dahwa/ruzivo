@@ -1,5 +1,8 @@
 appId: com.ruzivo.desktop
-productName: Ruzivo
+productName: SSV Admin
+# Regenerate from public/branding/logo/logo.png via
+# `node scripts/generate-branding-icons.mjs` if the logo ever changes.
+icon: build/icon.ico
 directories:
   output: release
   buildResources: build

@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Ruzivo",
+  title: "SSV Admin",
   description: "School finance office — payments, expenses, and reporting.",
 };
 

@@ -2,9 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>Ruzivo Setup</title>
+<title>SSV Admin Setup</title>
 <style>
-  body { font-family: system-ui, sans-serif; background: #f8f8f8; color: #1a1a1a; padding: 2rem; }
+  body { font-family: system-ui, sans-serif; background: #f5f1ea; color: #1a1a1a; padding: 2rem; }
   .card { max-width: 440px; margin: 0 auto; background: #fff; border: 1px solid #ddd; border-radius: 12px; padding: 1.75rem; }
   h1 { font-size: 1.1rem; margin: 0 0 1rem; }
   p.detail { font-size: .85rem; color: #666; margin: 0 0 1.25rem; }
@@ -31,7 +31,7 @@
     </div>
 
     <div id="existing-panel">
-      <p class="detail">Enter the details of an existing PostgreSQL server. Ruzivo will create its database on that server if it doesn't already exist — nothing else on the server is touched.</p>
+      <p class="detail">Enter the details of an existing PostgreSQL server. SSV Admin will create its database on that server if it doesn't already exist — nothing else on the server is touched.</p>
       <label>Host<input id="host" value="localhost" /></label>
       <label>Port<input id="port" value="5432" /></label>
       <label>Database<input id="database" value="ruzivo" /></label>
@@ -41,7 +41,7 @@
     </div>
 
     <div id="embedded-panel" hidden>
-      <p class="detail">Ruzivo will install and run its own private PostgreSQL server, stored entirely inside this app's data folder. Nothing else on your computer is affected, and no existing PostgreSQL installation is required.</p>
+      <p class="detail">SSV Admin will install and run its own private PostgreSQL server, stored entirely inside this app's data folder. Nothing else on your computer is affected, and no existing PostgreSQL installation is required.</p>
       <button type="button" class="primary" id="submit-embedded">Set Up Automatically</button>
     </div>
 

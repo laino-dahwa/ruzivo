@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, nativeImage } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage } from 'electron';
 import path from 'node:path';
 import { writeFile } from 'node:fs/promises';
 import { getDbConfig, getProvisioningMode, saveDbConfig, type DesktopDbConfig, type ProvisioningMode } from './config-store';
@@ -210,6 +210,10 @@ async function startDevelopmentFlow(): Promise<void> {
 }
 
 app.whenReady().then(async () => {
+  // No File/Edit/View/Window menu bar — this is a business app, not a
+  // document editor, and none of those menus have anything useful in them.
+  Menu.setApplicationMenu(null);
+
   try {
     if (isProductionFlow) {
       await startProductionFlow();
@@ -218,7 +222,7 @@ app.whenReady().then(async () => {
     }
   } catch (error) {
     console.error('[startup] failed:', error);
-    dialog.showErrorBox('Ruzivo failed to start', error instanceof Error ? error.message : String(error));
+    dialog.showErrorBox('SSV Admin failed to start', error instanceof Error ? error.message : String(error));
     app.quit();
   }
 

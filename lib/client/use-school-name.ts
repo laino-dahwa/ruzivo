@@ -5,7 +5,7 @@ import { schoolsApi } from '../../services/schools';
 import { useCurrentSchoolId } from './current-school-id';
 
 /** Shown wherever a school has not been chosen, or has no name recorded. */
-export const DEFAULT_APP_NAME = 'Ruzivo';
+export const DEFAULT_APP_NAME = 'SSV Admin';
 
 /**
  * The active school's name, for the places the app used to put its own.
