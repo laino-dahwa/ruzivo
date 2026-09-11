@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PATCH as PATCH_GENDER, DELETE as DELETE_GENDER, GET as GET_GENDER } from "../app/api/schools/[school_id]/gender/route";
 import { DELETE as DELETE_EXPENSE_CATEGORY } from "../app/api/schools/[school_id]/expense_categories/route";
 import { PATCH as PATCH_INCOME, DELETE as DELETE_INCOME } from "../app/api/schools/[school_id]/income_categories/route";
+import { DELETE as DELETE_ROLE } from "../app/api/schools/[school_id]/roles/route";
 import { createSchool } from "../repositories/school/create/createSchool";
 import { createGender } from "../repositories/school/create/createGenderCategory";
 import { createClassCategory } from "../repositories/school/create/createClassCategory";
@@ -9,7 +10,9 @@ import { createAcademicYear } from "../repositories/school/create/createAcademic
 import { createIncomeCategory } from "../repositories/school/create/createIncomeCategory";
 import { createExpenseCategory } from "../repositories/school/create/createExpenseCategory";
 import { createExpense } from "../repositories/school/create/createExpense";
+import { createRole } from "../repositories/school/create/createRole";
 import { createLearners } from "../repositories/learner/create/addLearner";
+import { createEmployees } from "../repositories/employee/create/createEmployee";
 import { query } from "../lib/db";
 
 // Reference rows (genders, fees, categories…) are renameable and deletable
@@ -26,6 +29,8 @@ let unusedCategoryId: number;
 let usedIncomeId: number;
 let classId: number;
 let yearId: number;
+let usedRoleId: number;
+let unusedRoleId: number;
 
 function makeParams(school_id: string) {
   return { params: Promise.resolve({ school_id }) };
@@ -74,9 +79,19 @@ beforeAll(async () => {
 
   // A learner makes the "Male" gender genuinely in use.
   await createLearners([{ school_id: SCHOOL, first_name: "Ref", last_name: "Learner", gender_id: maleId, date_of_birth: "2015-01-01", class_category_id: classId, academic_year_id: yearId }]);
+
+  const [usedRole] = await createRole([{ school_id: SCHOOL, role_name: "Teacher" }]);
+  const [unusedRole] = await createRole([{ school_id: SCHOOL, role_name: "Unused Role" }]);
+  usedRoleId = usedRole.role_id;
+  unusedRoleId = unusedRole.role_id;
+
+  // An employee makes the "Teacher" role genuinely in use.
+  await createEmployees([{ school_id: SCHOOL, first_name: "Ref", last_name: "Employee", role_id: usedRoleId }]);
 });
 
 afterAll(async () => {
+  await query(`DELETE FROM employees WHERE school_id = $1`, [SCHOOL]);
+  await query(`DELETE FROM roles WHERE school_id = $1`, [SCHOOL]);
   await query(`DELETE FROM enrolments WHERE learner_id IN (SELECT learner_id FROM learners WHERE school_id = $1)`, [SCHOOL]);
   await query(`DELETE FROM learners WHERE school_id = $1`, [SCHOOL]);
   await query(`DELETE FROM expenses WHERE expense_category_id IN (SELECT expense_category_id FROM expense_categories WHERE school_id = $1)`, [SCHOOL]);
@@ -183,5 +198,22 @@ describe("deleting reference rows", () => {
   it("rejects a delete request with no id", async () => {
     const response = await DELETE_GENDER(deleteRequest("http://localhost/x"), makeParams(SCHOOL));
     expect(response.status).toBe(400);
+  });
+
+  it("refuses to delete a role an employee still holds, and says how many", async () => {
+    const response = await DELETE_ROLE(deleteRequest(`http://localhost/x?role_id=${usedRoleId}`), makeParams(SCHOOL));
+    expect(response.status).toBe(409);
+    expect((await readJson(response)).error).toContain("1 employee");
+
+    const row = await query(`SELECT 1 FROM roles WHERE role_id = $1`, [usedRoleId]);
+    expect(row.rowCount).toBe(1);
+  });
+
+  it("deletes an unused role", async () => {
+    const response = await DELETE_ROLE(deleteRequest(`http://localhost/x?role_id=${unusedRoleId}`), makeParams(SCHOOL));
+    expect(response.status).toBe(200);
+
+    const row = await query(`SELECT 1 FROM roles WHERE role_id = $1`, [unusedRoleId]);
+    expect(row.rowCount).toBe(0);
   });
 });

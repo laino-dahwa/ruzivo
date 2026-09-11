@@ -65,3 +65,11 @@ export const EXPENSE_CATEGORIES: ReferenceTable = {
   dependents: [{ table: "expenses", column: "expense_category_id", noun: "expense" }],
   noun: "expense category",
 };
+
+export const ROLES: ReferenceTable = {
+  table: "roles",
+  idColumn: "role_id",
+  editableColumns: ["role_name"],
+  dependents: [{ table: "employees", column: "role_id", noun: "employee" }],
+  noun: "role",
+};

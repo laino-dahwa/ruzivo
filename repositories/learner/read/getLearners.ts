@@ -2,7 +2,7 @@ import { query } from "../../../lib/db";
 
 export async function getLearners(learner_id:string|null,class_name:string|null,gender_name:string|null,academic_year:string|null) {
     const result = await query(`
-        SELECT l.learner_id, l.first_name, l.last_name,
+        SELECT l.learner_id, l.first_name, l.last_name, l.email,
                l.gender_id::int AS gender_id, g.gender_name,
                -- date_of_birth is a DATE. Read back as a JS Date it picks up
                -- the server's timezone offset and can render as the previous

@@ -77,6 +77,17 @@ function present(value: unknown): boolean {
   return value !== undefined && value !== null && value !== '';
 }
 
+export function validateEmployees(records: Record<string, unknown>[]): RecordError[] {
+  const errors: RecordError[] = [];
+  records.forEach((record, index) => {
+    requiredText(record.school_id, 'school_id', index, errors);
+    requiredText(record.first_name, 'first_name', index, errors);
+    requiredText(record.last_name, 'last_name', index, errors);
+    positiveId(record.role_id, 'role_id', index, errors);
+  });
+  return errors;
+}
+
 export function validateExpenses(records: Record<string, unknown>[]): RecordError[] {
   const errors: RecordError[] = [];
   records.forEach((record, index) => {

@@ -9,6 +9,7 @@ import {
   incomeCategoriesApi,
   paymentMethodsApi,
   paymentPeriodsApi,
+  rolesApi,
 } from '../../services/reference-data';
 
 export function useSchoolReferenceData(schoolId: string | null) {
@@ -19,5 +20,6 @@ export function useSchoolReferenceData(schoolId: string | null) {
   const paymentMethods = useQuery({ queryKey: ['payment_methods', schoolId], queryFn: () => paymentMethodsApi.list(schoolId!), enabled: !!schoolId });
   const incomeCategories = useQuery({ queryKey: ['income_categories', schoolId], queryFn: () => incomeCategoriesApi.list(schoolId!), enabled: !!schoolId });
   const expenseCategories = useQuery({ queryKey: ['expense_categories', schoolId], queryFn: () => expenseCategoriesApi.list(schoolId!), enabled: !!schoolId });
-  return { genders, classCategories, academicYears, paymentPeriods, paymentMethods, incomeCategories, expenseCategories };
+  const roles = useQuery({ queryKey: ['roles', schoolId], queryFn: () => rolesApi.list(schoolId!), enabled: !!schoolId });
+  return { genders, classCategories, academicYears, paymentPeriods, paymentMethods, incomeCategories, expenseCategories, roles };
 }

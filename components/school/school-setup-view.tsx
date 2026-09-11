@@ -2,10 +2,10 @@
 
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus } from 'lucide-react';
+import { Download, Plus } from 'lucide-react';
 import { useToast } from '../../app/components/hooks/use-toast';
 import { useCurrentSchoolId } from '../../lib/client/current-school-id';
-import { schoolsApi } from '../../services/schools';
+import { schoolsApi, schoolExportApi } from '../../services/schools';
 import {
   academicYearsApi,
   classCategoriesApi,
@@ -14,14 +14,16 @@ import {
   incomeCategoriesApi,
   paymentMethodsApi,
   paymentPeriodsApi,
+  rolesApi,
 } from '../../services/reference-data';
 import type { School } from '../../types/school';
-import type { AcademicYear, ClassCategory, ExpenseCategory, Gender, IncomeCategory, PaymentMethod, PaymentPeriod } from '../../types/reference-data';
+import type { AcademicYear, ClassCategory, ExpenseCategory, Gender, IncomeCategory, PaymentMethod, PaymentPeriod, Role } from '../../types/reference-data';
 import { useSchoolReferenceData } from '../reference-data/use-school-reference-data';
 import { ReferenceListForm } from '../reference-data/reference-list-form';
 import { SectionHeading } from '../shared/section-heading';
 import { NoSchoolNotice } from '../shared/no-school-notice';
 import { SchoolLogoCard } from './school-logo-card';
+import { EmployeesCard } from './employees-card';
 import { ErrorNotice } from '../shared/error-notice';
 
 export function SchoolSetupView() {
@@ -30,6 +32,7 @@ export function SchoolSetupView() {
   const queryClient = useQueryClient();
   const [lookupId, setLookupId] = useState('');
   const [schoolForm, setSchoolForm] = useState({ school_id: '', school_name: '', school_type: '', school_address: '', school_contact: '', school_email: '' });
+  const [exporting, setExporting] = useState(false);
 
   const schoolQuery = useQuery({ queryKey: ['school', schoolId], queryFn: () => schoolsApi.get(schoolId!), enabled: !!schoolId });
   const school: School | undefined = schoolQuery.data?.[0];
@@ -66,6 +69,19 @@ export function SchoolSetupView() {
     }
   };
 
+  const exportSchoolData = async () => {
+    if (!schoolId) return;
+    setExporting(true);
+    try {
+      await schoolExportApi.download(schoolId);
+      toast({ title: 'School data exported' });
+    } catch (error) {
+      toast({ title: 'Could not export school data', description: (error as Error).message, variant: 'destructive' });
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <>
       <SectionHeading eyebrow="Setup" title="School setup" detail="Create a school, or switch to an existing one, then manage the reference data required to add learners and payments." />
@@ -96,6 +112,15 @@ export function SchoolSetupView() {
               <p className="font-semibold">{school.school_name} ({school.school_id})</p>
               <p className="mt-1 text-muted-foreground">{school.school_type} · {school.school_address}</p>
               <p className="mt-1 text-muted-foreground">{school.school_contact} · {school.school_email}</p>
+              <button
+                type="button"
+                onClick={exportSchoolData}
+                disabled={exporting}
+                data-testid="button-export-school-data"
+                className="button-lift mt-3 flex h-9 items-center gap-2 rounded-lg border border-border bg-secondary px-3 text-xs font-semibold disabled:opacity-60"
+              >
+                <Download size={14} />{exporting ? 'Preparing…' : 'Export school data'}
+              </button>
             </div>
           )}
         </div>
@@ -105,6 +130,15 @@ export function SchoolSetupView() {
         <>
         <div className="mt-8"><SchoolLogoCard schoolId={schoolId} /></div>
         <div className="mt-6 grid gap-6 lg:grid-cols-2">
+          <ReferenceListForm<Role>
+            title="Roles" rows={ref.roles.data} isLoading={ref.roles.isLoading}
+            columns={[{ key: 'role_id', label: 'ID' }, { key: 'role_name', label: 'Name' }]}
+            fields={[{ name: 'role_name', label: 'Name' }]}
+            onCreate={(values) => rolesApi.create(schoolId, [{ school_id: schoolId, role_name: values.role_name }]).then(() => invalidateRef('roles'))}
+            idKey="role_id" itemNoun="role"
+            onUpdate={(id, values) => rolesApi.update(schoolId, [{ school_id: schoolId, role_id: id, ...{ role_name: values.role_name } }]).then(() => invalidateRef('roles'))}
+            onDelete={(id) => rolesApi.remove(schoolId, 'role_id', id).then(() => invalidateRef('roles'))}
+          />
           <ReferenceListForm<Gender>
             title="Genders" rows={ref.genders.data} isLoading={ref.genders.isLoading}
             columns={[{ key: 'gender_id', label: 'ID' }, { key: 'gender_name', label: 'Name' }]}
@@ -169,6 +203,7 @@ export function SchoolSetupView() {
             onDelete={(id) => expenseCategoriesApi.remove(schoolId, 'expense_category_id', id).then(() => invalidateRef('expense_categories'))}
           />
         </div>
+        <div className="mt-6"><EmployeesCard schoolId={schoolId} roles={ref.roles.data ?? []} /></div>
         </>
       )}
     </>

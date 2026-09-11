@@ -2,6 +2,7 @@ export type Learner = {
   learner_id: string;
   first_name: string;
   last_name: string;
+  email: string | null;
   gender_name: string;
   curent_year: string;
   class_name: string;

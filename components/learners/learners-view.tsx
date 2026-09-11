@@ -193,15 +193,16 @@ export function LearnersView() {
             <div className="mt-4 overflow-x-auto rounded-lg border border-border/60">
               <table className="w-full text-left text-xs">
                 <thead className="bg-secondary/60 text-[10px] uppercase text-muted-foreground">
-                  <tr><th className="px-3 py-2 font-semibold">Learner ID</th><th className="px-3 py-2 font-semibold">Name</th><th className="px-3 py-2 font-semibold">Gender</th><th className="px-3 py-2 font-semibold">Class</th><th className="px-3 py-2 font-semibold">Year</th><th className="px-3 py-2 font-semibold"></th></tr>
+                  <tr><th className="px-3 py-2 font-semibold">Learner ID</th><th className="px-3 py-2 font-semibold">Name</th><th className="px-3 py-2 font-semibold">Email</th><th className="px-3 py-2 font-semibold">Gender</th><th className="px-3 py-2 font-semibold">Class</th><th className="px-3 py-2 font-semibold">Year</th><th className="px-3 py-2 font-semibold"></th></tr>
                 </thead>
                 <tbody className="divide-y divide-border/60">
-                  {learnersQuery.isLoading && <tr><td className="px-3 py-3 text-muted-foreground" colSpan={6}>Loading…</td></tr>}
-                  {!learnersQuery.isLoading && (learnersQuery.data?.length ?? 0) === 0 && <tr><td className="px-3 py-3 text-muted-foreground" colSpan={6}>No learners found</td></tr>}
+                  {learnersQuery.isLoading && <tr><td className="px-3 py-3 text-muted-foreground" colSpan={7}>Loading…</td></tr>}
+                  {!learnersQuery.isLoading && (learnersQuery.data?.length ?? 0) === 0 && <tr><td className="px-3 py-3 text-muted-foreground" colSpan={7}>No learners found</td></tr>}
                   {learnersQuery.data?.map((learner) => (
                     <tr key={learner.learner_id} data-testid={`row-learner-${learner.learner_id}`}>
                       <td className="px-3 py-2 font-mono">{learner.learner_id}</td>
                       <td className="px-3 py-2">{learner.first_name} {learner.last_name}</td>
+                      <td className="px-3 py-2 text-muted-foreground">{learner.email ?? '—'}</td>
                       <td className="px-3 py-2">{learner.gender_name}</td>
                       <td className="px-3 py-2">{learner.class_name}</td>
                       <td className="px-3 py-2">{learner.curent_year}</td>

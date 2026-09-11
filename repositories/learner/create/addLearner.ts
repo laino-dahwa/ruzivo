@@ -1,5 +1,6 @@
 import { randomInt } from "crypto";
-import { transaction } from "../../../lib/db";
+import { query, transaction } from "../../../lib/db";
+import { generateUniqueEmail } from "../../../lib/identity/email";
 
 export type CreateLearnerInput = {
   school_id: string;
@@ -14,6 +15,7 @@ export type CreateLearnerInput = {
 
 type PreparedLearner = CreateLearnerInput & {
   learner_id: string;
+  email: string;
 };
 
 const ALPHANUMERIC =
@@ -40,18 +42,40 @@ function generateLearnerId(schoolId: string): string {
 }
 
 function prepareLearners(
-  learners: CreateLearnerInput[]
+  learners: CreateLearnerInput[],
+  existingEmailsBySchool: Map<string, Set<string>>
 ): PreparedLearner[] {
-  return learners.map((learner) => ({
-    ...learner,
+  return learners.map((learner) => {
     // school_id is CHAR(4), so anything read back from Postgres arrives
     // blank-padded ("SSV "). Concatenating that padding into the learner id
     // pushes it past learner_id's VARCHAR(8) and the insert fails, so the
     // padding is stripped before the id is built.
-    learner_id: generateLearnerId(
-      learner.school_id.trim()
-    ),
-  }));
+    const schoolId = learner.school_id.trim();
+    const taken = existingEmailsBySchool.get(schoolId) ?? new Set<string>();
+    existingEmailsBySchool.set(schoolId, taken);
+
+    return {
+      ...learner,
+      learner_id: generateLearnerId(schoolId),
+      email: generateUniqueEmail(learner.first_name, learner.last_name, schoolId, taken),
+    };
+  });
+}
+
+function cloneEmailSets(bySchool: Map<string, Set<string>>): Map<string, Set<string>> {
+  return new Map([...bySchool].map(([schoolId, emails]) => [schoolId, new Set(emails)]));
+}
+
+async function loadExistingEmails(schoolIds: string[]): Promise<Map<string, Set<string>>> {
+  const bySchool = new Map<string, Set<string>>();
+  for (const schoolId of new Set(schoolIds)) {
+    const existing = await query(
+      `SELECT email FROM learners WHERE school_id = $1 AND email IS NOT NULL`,
+      [schoolId]
+    );
+    bySchool.set(schoolId, new Set(existing.rows.map((row) => row.email as string)));
+  }
+  return bySchool;
 }
 
 export async function createLearners(
@@ -61,13 +85,20 @@ export async function createLearners(
     return [];
   }
 
+  const existingEmailsBySchool = await loadExistingEmails(
+    learners.map((learner) => learner.school_id.trim())
+  );
+
   for (
     let attempt = 1;
     attempt <= MAX_RETRIES;
     attempt++
   ) {
+    // Cloned per attempt: prepareLearners mutates these sets as it hands out
+    // addresses, and a retry (on a learner_id collision) must start back from
+    // just the addresses that actually exist in the database.
     const preparedLearners =
-      prepareLearners(learners);
+      prepareLearners(learners, cloneEmailSets(existingEmailsBySchool));
 
     try {
       return await transaction(async (client) => {
@@ -81,7 +112,7 @@ export async function createLearners(
         const learnerPlaceholders =
           preparedLearners.map(
             (learner, index) => {
-              const offset = index * 6;
+              const offset = index * 7;
 
               learnerValues.push(
                 learner.learner_id,
@@ -89,7 +120,8 @@ export async function createLearners(
                 learner.first_name,
                 learner.last_name,
                 learner.gender_id,
-                learner.date_of_birth
+                learner.date_of_birth,
+                learner.email
               );
 
               return `(
@@ -98,7 +130,8 @@ export async function createLearners(
                 $${offset + 3},
                 $${offset + 4},
                 $${offset + 5},
-                $${offset + 6}
+                $${offset + 6},
+                $${offset + 7}
               )`;
             }
           );
@@ -111,7 +144,8 @@ export async function createLearners(
             first_name,
             last_name,
             gender_id,
-            date_of_birth
+            date_of_birth,
+            email
           )
           VALUES
             ${learnerPlaceholders.join(",")}

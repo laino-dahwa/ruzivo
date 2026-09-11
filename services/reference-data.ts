@@ -6,6 +6,7 @@ import type {
   IncomeCategory,
   PaymentMethod,
   PaymentPeriod,
+  Role,
 } from '@/types/reference-data';
 import { request } from './http';
 
@@ -31,3 +32,4 @@ export const paymentPeriodsApi = referenceResource<PaymentPeriod, { school_id: s
 export const paymentMethodsApi = referenceResource<PaymentMethod, { school_id: string; method_name: string }>('payment_methods');
 export const incomeCategoriesApi = referenceResource<IncomeCategory, { school_id: string; income_name: string; income_limit: string }>('income_categories');
 export const expenseCategoriesApi = referenceResource<ExpenseCategory, { school_id: string; expense_name: string }>('expense_categories');
+export const rolesApi = referenceResource<Role, { school_id: string; role_name: string }>('roles');
