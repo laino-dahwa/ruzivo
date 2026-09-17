@@ -71,6 +71,66 @@ ipcMain.on('window:set-icon', async (event, url: unknown) => {
   }
 });
 
+/**
+ * Prints a self-contained HTML receipt (see lib/receipt/buildReceiptHtml.ts)
+ * via the OS print dialog. Rendered in a hidden, throwaway window rather than
+ * the main window itself, so printing a receipt never disturbs whatever the
+ * user is looking at. Not silent — the dialog is what lets the user pick the
+ * actual receipt printer from whatever's installed, rather than this app
+ * having to know or store which one that is.
+ */
+ipcMain.handle('print:receipt', async (_event, html: unknown) => {
+  if (typeof html !== 'string') {
+    return { ok: false, error: 'Invalid receipt content' };
+  }
+
+  const printWindow = new BrowserWindow({
+    show: false,
+    webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false },
+  });
+
+  try {
+    await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    // loadURL resolving only guarantees the document itself is in; the
+    // receipt's logo <img> can still be mid-fetch a moment later, and
+    // printing before it paints has produced a blank page in testing.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    return await new Promise<{ ok: boolean; error?: string }>((resolve) => {
+      printWindow.webContents.print({
+        silent: false,
+        printBackground: true,
+        // A thermal receipt printer is monochrome-only. Left at Chromium's
+        // default (color: true), the rasterized page goes through the
+        // driver's colour-to-monochrome conversion — where a blank output
+        // was reproduced on real hardware — instead of Chromium rendering
+        // greyscale itself, which is the safer path for this class of
+        // printer. This is also why the earlier printToPDF proof-render
+        // (correct output) didn't catch the real failure: printToPDF never
+        // goes through the Windows print driver at all, only webContents.print()
+        // to a real device does — so it could confirm the HTML/CSS was fine
+        // but not the driver's own rendering path.
+        color: false,
+        // Left unset, this falls back to the printer driver's own stored
+        // default page size — which for at least one tested receipt-printer
+        // driver was an oddly-shaped custom size (76mm wide, 3276mm tall)
+        // that made Chromium's print pipeline badly mis-paginate a receipt
+        // this short, producing a blank first page. An explicit, sane size
+        // here avoids trusting that stored default at all. Units are
+        // microns (Electron's `print`, unlike CSS, is not millimeters).
+        pageSize: { width: 58_000, height: 250_000 },
+        margins: { marginType: 'none' },
+      }, (success, failureReason) => {
+        resolve(success ? { ok: true } : { ok: false, error: failureReason });
+      });
+    });
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  } finally {
+    if (!printWindow.isDestroyed()) printWindow.destroy();
+  }
+});
+
 ipcMain.on('updater:check', () => {
   if (app.isPackaged) checkForUpdates();
 });

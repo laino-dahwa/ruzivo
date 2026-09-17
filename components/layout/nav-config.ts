@@ -5,6 +5,7 @@ import {
   LayoutDashboard,
   Receipt,
   Scale,
+  ShieldAlert,
   Users,
 } from 'lucide-react';
 
@@ -14,6 +15,7 @@ export const nav = [
   { href: '/learners', label: 'Learners', icon: Users },
   { href: '/payments', label: 'Payments', icon: CircleDollarSign },
   { href: '/owing', label: 'Owing', icon: Scale },
+  { href: '/unpaid-mandatory', label: 'Unpaid Mandatory', icon: ShieldAlert },
   { href: '/expenses', label: 'Expenses', icon: Receipt },
   { href: '/reports', label: 'Reports', icon: FileBarChart },
 ];

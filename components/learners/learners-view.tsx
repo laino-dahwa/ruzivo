@@ -175,9 +175,27 @@ export function LearnersView() {
           <div className="rounded-2xl border border-border/80 bg-card p-5">
             <div className="flex flex-wrap items-end gap-2">
               <div className="w-56"><label className="mb-1 block text-[10px] font-semibold text-muted-foreground">Learner name</label><LearnerAutocomplete placeholder="Search by name…" onSelect={(learner) => setFilters((f) => ({ ...f, learner_id: learner?.learner_id ?? '' }))} /></div>
-              <div><label className="mb-1 block text-[10px] font-semibold text-muted-foreground">Class</label><input value={filters.class_name} onChange={(e) => setFilters((f) => ({ ...f, class_name: e.target.value }))} placeholder="e.g. Grade 4" className="field h-9 w-36 text-xs" /></div>
-              <div><label className="mb-1 block text-[10px] font-semibold text-muted-foreground">Gender</label><input value={filters.gender_name} onChange={(e) => setFilters((f) => ({ ...f, gender_name: e.target.value }))} placeholder="e.g. Female" className="field h-9 w-36 text-xs" /></div>
-              <div><label className="mb-1 block text-[10px] font-semibold text-muted-foreground">Academic year</label><input value={filters.academic_year} onChange={(e) => setFilters((f) => ({ ...f, academic_year: e.target.value }))} placeholder="e.g. 2026" className="field h-9 w-36 text-xs" /></div>
+              <div>
+                <label className="mb-1 block text-[10px] font-semibold text-muted-foreground">Class</label>
+                <select value={filters.class_name} onChange={(e) => setFilters((f) => ({ ...f, class_name: e.target.value }))} className="field h-9 w-36 text-xs">
+                  <option value="">All</option>
+                  {ref.classCategories.data?.map((c) => <option key={c.class_category_id} value={c.class_name}>{c.class_name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-[10px] font-semibold text-muted-foreground">Gender</label>
+                <select value={filters.gender_name} onChange={(e) => setFilters((f) => ({ ...f, gender_name: e.target.value }))} className="field h-9 w-36 text-xs">
+                  <option value="">All</option>
+                  {ref.genders.data?.map((g) => <option key={g.gender_id} value={g.gender_name}>{g.gender_name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-[10px] font-semibold text-muted-foreground">Academic year</label>
+                <select value={filters.academic_year} onChange={(e) => setFilters((f) => ({ ...f, academic_year: e.target.value }))} className="field h-9 w-36 text-xs">
+                  <option value="">All</option>
+                  {ref.academicYears.data?.map((a) => <option key={a.academic_year_id} value={a.academic_year_name}>{a.academic_year_name}</option>)}
+                </select>
+              </div>
               <div className="ml-auto">
                 <DownloadPdfButton
                   disabled={learnersQuery.isLoading}
@@ -193,16 +211,15 @@ export function LearnersView() {
             <div className="mt-4 overflow-x-auto rounded-lg border border-border/60">
               <table className="w-full text-left text-xs">
                 <thead className="bg-secondary/60 text-[10px] uppercase text-muted-foreground">
-                  <tr><th className="px-3 py-2 font-semibold">Learner ID</th><th className="px-3 py-2 font-semibold">Name</th><th className="px-3 py-2 font-semibold">Email</th><th className="px-3 py-2 font-semibold">Gender</th><th className="px-3 py-2 font-semibold">Class</th><th className="px-3 py-2 font-semibold">Year</th><th className="px-3 py-2 font-semibold"></th></tr>
+                  <tr><th className="px-3 py-2 font-semibold">Learner ID</th><th className="px-3 py-2 font-semibold">Name</th><th className="px-3 py-2 font-semibold">Gender</th><th className="px-3 py-2 font-semibold">Class</th><th className="px-3 py-2 font-semibold">Year</th><th className="px-3 py-2 font-semibold"></th></tr>
                 </thead>
                 <tbody className="divide-y divide-border/60">
-                  {learnersQuery.isLoading && <tr><td className="px-3 py-3 text-muted-foreground" colSpan={7}>Loading…</td></tr>}
-                  {!learnersQuery.isLoading && (learnersQuery.data?.length ?? 0) === 0 && <tr><td className="px-3 py-3 text-muted-foreground" colSpan={7}>No learners found</td></tr>}
+                  {learnersQuery.isLoading && <tr><td className="px-3 py-3 text-muted-foreground" colSpan={6}>Loading…</td></tr>}
+                  {!learnersQuery.isLoading && (learnersQuery.data?.length ?? 0) === 0 && <tr><td className="px-3 py-3 text-muted-foreground" colSpan={6}>No learners found</td></tr>}
                   {learnersQuery.data?.map((learner) => (
                     <tr key={learner.learner_id} data-testid={`row-learner-${learner.learner_id}`}>
                       <td className="px-3 py-2 font-mono">{learner.learner_id}</td>
                       <td className="px-3 py-2">{learner.first_name} {learner.last_name}</td>
-                      <td className="px-3 py-2 text-muted-foreground">{learner.email ?? '—'}</td>
                       <td className="px-3 py-2">{learner.gender_name}</td>
                       <td className="px-3 py-2">{learner.class_name}</td>
                       <td className="px-3 py-2">{learner.curent_year}</td>

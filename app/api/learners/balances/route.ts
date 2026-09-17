@@ -20,6 +20,11 @@ export async function GET(request:Request) {
         
         const {searchParams} = new URL(request.url)
 
+        const  school_id = getOptionalParam(searchParams,"school_id")
+        if (!school_id) {
+            return NextResponse.json({ error: "school_id is required" }, { status: 400 })
+        }
+
         const  learner_id  =getOptionalParam(searchParams,"learner_id");
         const  class_name = getOptionalParam(searchParams,"class_name")
         const  gender_name = getOptionalParam(searchParams,"gender_name")
@@ -29,7 +34,7 @@ export async function GET(request:Request) {
         // Settled rows are dropped only when asked for, so the JSON the
         // Record Payment form reads still carries every fee.
         const only_outstanding = getOptionalParam(searchParams,"only_outstanding") === "true"
-        const response = await getBalances(learner_id,class_name,gender_name,academic_year,income_name,payment_period,only_outstanding)
+        const response = await getBalances(school_id,learner_id,class_name,gender_name,academic_year,income_name,payment_period,only_outstanding)
 
         if (isPdfFormat(searchParams)) {
             const total = response.reduce((sum, row) => sum + Number(row.balance || 0), 0)
@@ -37,15 +42,17 @@ export async function GET(request:Request) {
                 title: "Outstanding Balances",
                 filenameStem: "outstanding-balances",
                 columns: [
-                    { key: "learner", label: "Learner", width: 140 },
-                    { key: "income", label: "Income", width: 110 },
-                    { key: "charged", label: "Charged", width: 85, align: "right" },
-                    { key: "paid", label: "Paid", width: 80, align: "right" },
-                    { key: "balance", label: "Balance", width: 90, align: "right" },
+                    { key: "learner", label: "Learner", width: 125 },
+                    { key: "income", label: "Income", width: 100 },
+                    { key: "period", label: "Period", width: 75 },
+                    { key: "charged", label: "Charged", width: 80, align: "right" },
+                    { key: "paid", label: "Paid", width: 75, align: "right" },
+                    { key: "balance", label: "Balance", width: 85, align: "right" },
                 ],
                 rows: response.map((row) => ({
                     learner: `${row.first_name} ${row.last_name}`,
                     income: row.income_name ?? "",
+                    period: row.period_name ?? "",
                     charged: formatCurrency(row.charged),
                     paid: formatCurrency(row.paid),
                     balance: formatCurrency(row.balance),

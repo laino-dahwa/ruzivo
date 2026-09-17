@@ -37,7 +37,7 @@ export async function getSchoolExportData(school_id: string): Promise<ExportShee
     query(`SELECT role_id, role_name FROM roles WHERE school_id = $1 ORDER BY role_name`, [school_id]).then((r) => r.rows),
     query(
       `
-      SELECT l.learner_id, l.first_name, l.last_name, l.email, g.gender_name,
+      SELECT l.learner_id, l.first_name, l.last_name, g.gender_name,
              TO_CHAR(l.date_of_birth, 'YYYY-MM-DD') AS date_of_birth, l.created_at
       FROM learners l
       LEFT JOIN genders g ON g.gender_id = l.gender_id

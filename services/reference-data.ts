@@ -3,7 +3,6 @@ import type {
   ClassCategory,
   ExpenseCategory,
   Gender,
-  IncomeCategory,
   PaymentMethod,
   PaymentPeriod,
   Role,
@@ -30,6 +29,8 @@ export const gendersApi = referenceResource<Gender, { school_id: string; gender_
 export const academicYearsApi = referenceResource<AcademicYear, { school_id: string; academic_year_name: string; start_date: string; end_date: string }>('academic_years');
 export const paymentPeriodsApi = referenceResource<PaymentPeriod, { school_id: string; period_name: string }>('payment_periods');
 export const paymentMethodsApi = referenceResource<PaymentMethod, { school_id: string; method_name: string }>('payment_methods');
-export const incomeCategoriesApi = referenceResource<IncomeCategory, { school_id: string; income_name: string; income_limit: string }>('income_categories');
+// income_categories has its own dedicated service (services/income-categories.ts) —
+// its create/update payloads carry applicability membership the generic
+// {school_id, name, value} shape here can't express.
 export const expenseCategoriesApi = referenceResource<ExpenseCategory, { school_id: string; expense_name: string }>('expense_categories');
 export const rolesApi = referenceResource<Role, { school_id: string; role_name: string }>('roles');

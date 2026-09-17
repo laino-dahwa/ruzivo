@@ -16,7 +16,7 @@ import { NoSchoolNotice } from '../shared/no-school-notice';
 export function OverviewView() {
   const { schoolId } = useCurrentSchoolId();
   const learnersQuery = useQuery({ queryKey: ['learners'], queryFn: () => learnersApi.list(), enabled: !!schoolId });
-  const balancesQuery = useQuery({ queryKey: ['balances'], queryFn: () => balancesApi.list(), enabled: !!schoolId });
+  const balancesQuery = useQuery({ queryKey: ['balances', schoolId], queryFn: () => balancesApi.list(schoolId!), enabled: !!schoolId });
   const paymentsQuery = useQuery({ queryKey: ['payments'], queryFn: () => paymentsApi.list(), enabled: !!schoolId });
   const expensesQuery = useQuery({ queryKey: ['expenses', schoolId], queryFn: () => expensesApi.list(schoolId!), enabled: !!schoolId });
 

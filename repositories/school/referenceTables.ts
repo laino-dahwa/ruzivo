@@ -16,7 +16,10 @@ export const CLASS_CATEGORIES: ReferenceTable = {
   table: "class_categories",
   idColumn: "class_category_id",
   editableColumns: ["class_name"],
-  dependents: [{ table: "enrolments", column: "class_category_id", noun: "enrolment" }],
+  dependents: [
+    { table: "enrolments", column: "class_category_id", noun: "enrolment" },
+    { table: "income_category_classes", column: "class_category_id", noun: "fee configuration" },
+  ],
   noun: "class category",
 };
 
@@ -35,7 +38,10 @@ export const PAYMENT_PERIODS: ReferenceTable = {
   table: "payment_periods",
   idColumn: "payment_period_id",
   editableColumns: ["period_name"],
-  dependents: [{ table: "charges", column: "payment_period_id", noun: "charge" }],
+  dependents: [
+    { table: "charges", column: "payment_period_id", noun: "charge" },
+    { table: "income_category_periods", column: "payment_period_id", noun: "fee configuration" },
+  ],
   noun: "payment period",
 };
 

@@ -67,7 +67,7 @@ describe("migrations — fresh database", () => {
     });
     // Asserted in order and in full: a migration that stops being applied,
     // or one that lands out of sequence, is exactly the failure this catches.
-    expect(applied.map((m) => m.name)).toEqual(["001_initial_schema", "002_school_logos", "003_employees", "004_roles"]);
+    expect(applied.map((m) => m.name)).toEqual(["001_initial_schema", "002_school_logos", "003_employees", "004_roles", "005_income_category_applicability"]);
   });
 
   it("creates every table the application code depends on", async () => {
@@ -86,6 +86,9 @@ describe("migrations — fresh database", () => {
       "expenses",
       "genders",
       "income_categories",
+      "income_category_classes",
+      "income_category_learners",
+      "income_category_periods",
       "learners",
       "payment_allocations",
       "payment_methods",
@@ -126,6 +129,33 @@ describe("migrations — fresh database", () => {
     await expect(pool.query("DELETE FROM schools WHERE school_id = 'ZZZ'")).resolves.toBeDefined();
 
     const remaining = await pool.query("SELECT (SELECT count(*) FROM genders WHERE school_id = 'ZZZ') + (SELECT count(*) FROM payment_methods WHERE school_id = 'ZZZ') + (SELECT count(*) FROM class_categories WHERE school_id = 'ZZZ') AS total");
+    expect(Number(remaining.rows[0].total)).toBe(0);
+    await pool.end();
+  });
+
+  it("deletes a school in one statement even when a fee's applicability names its own classes/periods (two independent cascade paths converging on the same join row)", async () => {
+    const pool = new Pool(testDbConfig());
+    await pool.query("INSERT INTO schools (school_id, school_name) VALUES ('ZZY', 'Cascade Check 2')");
+    const classResult = await pool.query("INSERT INTO class_categories (school_id, class_name) VALUES ('ZZY', 'X') RETURNING class_category_id");
+    const periodResult = await pool.query("INSERT INTO payment_periods (school_id, period_name) VALUES ('ZZY', 'X') RETURNING payment_period_id");
+    const categoryResult = await pool.query(
+      "INSERT INTO income_categories (school_id, income_name, class_applicability, period_applicability) VALUES ('ZZY', 'X', 'SPECIFIC_CLASSES', 'SPECIFIC_PERIODS') RETURNING income_category_id"
+    );
+    const incomeCategoryId = categoryResult.rows[0].income_category_id;
+    await pool.query("INSERT INTO income_category_classes (income_category_id, class_category_id) VALUES ($1, $2)", [incomeCategoryId, classResult.rows[0].class_category_id]);
+    await pool.query("INSERT INTO income_category_periods (income_category_id, payment_period_id) VALUES ($1, $2)", [incomeCategoryId, periodResult.rows[0].payment_period_id]);
+
+    // schools -> class_categories and schools -> income_categories -> income_category_classes
+    // both terminate at income_category_classes; without ON DELETE CASCADE on
+    // income_category_classes' own FK to class_categories (and the equivalent
+    // for periods), this failed with "violates foreign key constraint
+    // fk_icc_class_category" — Postgres does not reliably finish the second,
+    // longer cascade path before the first path's row-level check runs.
+    await expect(pool.query("DELETE FROM schools WHERE school_id = 'ZZY'")).resolves.toBeDefined();
+
+    const remaining = await pool.query(
+      "SELECT (SELECT count(*) FROM class_categories WHERE school_id = 'ZZY') + (SELECT count(*) FROM payment_periods WHERE school_id = 'ZZY') + (SELECT count(*) FROM income_categories WHERE school_id = 'ZZY') AS total"
+    );
     expect(Number(remaining.rows[0].total)).toBe(0);
     await pool.end();
   });

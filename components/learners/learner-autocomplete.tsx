@@ -19,6 +19,12 @@ export function LearnerAutocomplete({ onSelect, placeholder }: { onSelect: (lear
       .slice(0, 8);
   }, [query, directoryQuery.data]);
 
+  const choose = (learner: Learner) => {
+    setQuery(`${learner.first_name} ${learner.last_name}`);
+    onSelect(learner);
+    setOpen(false);
+  };
+
   return (
     <div className="relative">
       <div className="relative">
@@ -32,6 +38,13 @@ export function LearnerAutocomplete({ onSelect, placeholder }: { onSelect: (lear
           }}
           onFocus={() => setOpen(true)}
           onBlur={() => setTimeout(() => setOpen(false), 150)}
+          onKeyDown={(event) => {
+            if (event.key === 'Tab' && open && matches.length > 0) {
+              // Not prevented: focus still moves to the next field as normal,
+              // this just fills the choice in first instead of leaving it blank.
+              choose(matches[0]);
+            }
+          }}
           placeholder={placeholder ?? 'Search learner by name'}
           className="field"
           style={{ paddingLeft: query ? undefined : '2rem' }}
@@ -43,11 +56,7 @@ export function LearnerAutocomplete({ onSelect, placeholder }: { onSelect: (lear
             <button
               key={learner.learner_id}
               type="button"
-              onMouseDown={() => {
-                setQuery(`${learner.first_name} ${learner.last_name}`);
-                onSelect(learner);
-                setOpen(false);
-              }}
+              onMouseDown={() => choose(learner)}
               className="flex w-full items-center justify-between gap-2 rounded-md px-2.5 py-2 text-left text-xs hover:bg-secondary"
             >
               <span>{learner.first_name} {learner.last_name}</span>

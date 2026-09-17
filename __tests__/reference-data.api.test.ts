@@ -1,8 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PATCH as PATCH_GENDER, DELETE as DELETE_GENDER, GET as GET_GENDER } from "../app/api/schools/[school_id]/gender/route";
 import { DELETE as DELETE_EXPENSE_CATEGORY } from "../app/api/schools/[school_id]/expense_categories/route";
-import { PATCH as PATCH_INCOME, DELETE as DELETE_INCOME } from "../app/api/schools/[school_id]/income_categories/route";
+import { GET as GET_INCOME, POST as POST_INCOME, PATCH as PATCH_INCOME, DELETE as DELETE_INCOME } from "../app/api/schools/[school_id]/income_categories/route";
 import { DELETE as DELETE_ROLE } from "../app/api/schools/[school_id]/roles/route";
+import { DELETE as DELETE_CLASS_CATEGORY } from "../app/api/schools/[school_id]/class_categories/route";
+import { DELETE as DELETE_PAYMENT_PERIOD } from "../app/api/schools/[school_id]/payment_periods/route";
 import { createSchool } from "../repositories/school/create/createSchool";
 import { createGender } from "../repositories/school/create/createGenderCategory";
 import { createClassCategory } from "../repositories/school/create/createClassCategory";
@@ -11,6 +13,7 @@ import { createIncomeCategory } from "../repositories/school/create/createIncome
 import { createExpenseCategory } from "../repositories/school/create/createExpenseCategory";
 import { createExpense } from "../repositories/school/create/createExpense";
 import { createRole } from "../repositories/school/create/createRole";
+import { createPaymentPeriod } from "../repositories/school/create/createPaymentPeriod";
 import { createLearners } from "../repositories/learner/create/addLearner";
 import { createEmployees } from "../repositories/employee/create/createEmployee";
 import { query } from "../lib/db";
@@ -31,6 +34,8 @@ let classId: number;
 let yearId: number;
 let usedRoleId: number;
 let unusedRoleId: number;
+let secondClassId: number;
+let periodId: number;
 
 function makeParams(school_id: string) {
   return { params: Promise.resolve({ school_id }) };
@@ -87,9 +92,21 @@ beforeAll(async () => {
 
   // An employee makes the "Teacher" role genuinely in use.
   await createEmployees([{ school_id: SCHOOL, first_name: "Ref", last_name: "Employee", role_id: usedRoleId }]);
+
+  const [secondClass] = await createClassCategory([{ school_id: SCHOOL, class_name: "Grade 2" }]);
+  secondClassId = secondClass.class_category_id;
+  const [period] = await createPaymentPeriod([{ school_id: SCHOOL, period_name: "Term 1" }]);
+  periodId = period.payment_period_id;
 });
 
 afterAll(async () => {
+  // Defensive: a test whose assertions threw before reaching its own inline
+  // cleanup would otherwise leave an income category (and its applicability
+  // join rows) behind — which then breaks the school-cascade delete below,
+  // since a join table's FK to class_categories/payment_periods does not
+  // cascade. Deleting every income category up front (cascading to its own
+  // join rows) makes this afterAll resilient to that regardless.
+  await query(`DELETE FROM income_categories WHERE school_id = $1`, [SCHOOL]);
   await query(`DELETE FROM employees WHERE school_id = $1`, [SCHOOL]);
   await query(`DELETE FROM roles WHERE school_id = $1`, [SCHOOL]);
   await query(`DELETE FROM enrolments WHERE learner_id IN (SELECT learner_id FROM learners WHERE school_id = $1)`, [SCHOOL]);
@@ -215,5 +232,106 @@ describe("deleting reference rows", () => {
 
     const row = await query(`SELECT 1 FROM roles WHERE role_id = $1`, [unusedRoleId]);
     expect(row.rowCount).toBe(0);
+  });
+});
+
+describe("income category applicability", () => {
+  it("defaults new categories to MANDATORY/ALL_LEARNERS/ALL_PERIODS", async () => {
+    const response = await POST_INCOME(new Request("http://localhost/x", {
+      method: "POST",
+      body: JSON.stringify([{ school_id: SCHOOL, income_name: "Plain Fee", income_limit: "100" }]),
+    }));
+    expect(response.status).toBe(201);
+    const [created] = await readJson(response);
+    expect(created.priority).toBe("MANDATORY");
+    expect(created.class_applicability).toBe("ALL_LEARNERS");
+    expect(created.period_applicability).toBe("ALL_PERIODS");
+  });
+
+  it("creates a category scoped to specific classes and periods, and round-trips membership through GET", async () => {
+    const response = await POST_INCOME(new Request("http://localhost/x", {
+      method: "POST",
+      body: JSON.stringify([{
+        school_id: SCHOOL,
+        income_name: "Scoped Fee",
+        income_limit: "250",
+        priority: "OPTIONAL",
+        class_applicability: "SPECIFIC_CLASSES",
+        period_applicability: "SPECIFIC_PERIODS",
+        class_category_ids: [classId],
+        payment_period_ids: [periodId],
+      }]),
+    }));
+    expect(response.status).toBe(201);
+    const [created] = await readJson(response);
+    expect(created.priority).toBe("OPTIONAL");
+
+    const rows = await readJson(await GET_INCOME(new Request("http://localhost/x"), makeParams(SCHOOL)));
+    const row = rows.find((r: { income_category_id: number }) => r.income_category_id === created.income_category_id);
+    // Scalar bigint columns come back from pg as strings, but array_agg(bigint)
+    // comes back as an array of numbers — Number() on both sides avoids that
+    // node-postgres inconsistency tripping up the comparison.
+    expect(row.class_category_ids.map(Number)).toEqual([Number(classId)]);
+    expect(row.payment_period_ids.map(Number)).toEqual([Number(periodId)]);
+
+    // Editing replaces membership wholesale rather than appending.
+    const updateResponse = await PATCH_INCOME(patchRequest([{
+      school_id: SCHOOL,
+      income_category_id: created.income_category_id,
+      class_category_ids: [secondClassId],
+      payment_period_ids: [],
+    }]));
+    expect(updateResponse.status).toBe(201);
+
+    const afterUpdate = await readJson(await GET_INCOME(new Request("http://localhost/x"), makeParams(SCHOOL)));
+    const updatedRow = afterUpdate.find((r: { income_category_id: number }) => r.income_category_id === created.income_category_id);
+    expect(updatedRow.class_category_ids.map(Number)).toEqual([Number(secondClassId)]);
+    expect(updatedRow.payment_period_ids).toEqual([]);
+
+    await query(`DELETE FROM income_categories WHERE income_category_id = $1`, [created.income_category_id]);
+  });
+
+  it("refuses to delete a class still named in a fee's applicable classes", async () => {
+    const [guardClass] = await createClassCategory([{ school_id: SCHOOL, class_name: "Guarded Class" }]);
+    const [guardedCategory] = await createIncomeCategory([{
+      school_id: SCHOOL, income_name: "Guarded Fee", income_limit: "10",
+      class_applicability: "SPECIFIC_CLASSES", class_category_ids: [guardClass.class_category_id],
+    }]);
+
+    const response = await DELETE_CLASS_CATEGORY(deleteRequest(`http://localhost/x?class_category_id=${guardClass.class_category_id}`), makeParams(SCHOOL));
+    expect(response.status).toBe(409);
+    expect((await readJson(response)).error).toContain("fee configuration");
+
+    await query(`DELETE FROM income_categories WHERE income_category_id = $1`, [guardedCategory.income_category_id]);
+    await query(`DELETE FROM class_categories WHERE class_category_id = $1`, [guardClass.class_category_id]);
+  });
+
+  it("refuses to delete a payment period still named in a fee's applicable periods", async () => {
+    const [guardPeriod] = await createPaymentPeriod([{ school_id: SCHOOL, period_name: "Guarded Period" }]);
+    const [guardedCategory] = await createIncomeCategory([{
+      school_id: SCHOOL, income_name: "Guarded Period Fee", income_limit: "10",
+      period_applicability: "SPECIFIC_PERIODS", payment_period_ids: [guardPeriod.payment_period_id],
+    }]);
+
+    const response = await DELETE_PAYMENT_PERIOD(deleteRequest(`http://localhost/x?payment_period_id=${guardPeriod.payment_period_id}`), makeParams(SCHOOL));
+    expect(response.status).toBe(409);
+    expect((await readJson(response)).error).toContain("fee configuration");
+
+    await query(`DELETE FROM income_categories WHERE income_category_id = $1`, [guardedCategory.income_category_id]);
+    await query(`DELETE FROM payment_periods WHERE payment_period_id = $1`, [guardPeriod.payment_period_id]);
+  });
+
+  it("cascades its own applicability rows away when the category itself is deleted", async () => {
+    const [category] = await createIncomeCategory([{
+      school_id: SCHOOL, income_name: "Cascade Fee", income_limit: "10",
+      class_applicability: "SPECIFIC_CLASSES", class_category_ids: [classId],
+    }]);
+    const before = await query(`SELECT count(*)::int AS n FROM income_category_classes WHERE income_category_id = $1`, [category.income_category_id]);
+    expect(before.rows[0].n).toBe(1);
+
+    await query(`DELETE FROM income_categories WHERE income_category_id = $1`, [category.income_category_id]);
+
+    const after = await query(`SELECT count(*)::int AS n FROM income_category_classes WHERE income_category_id = $1`, [category.income_category_id]);
+    expect(after.rows[0].n).toBe(0);
   });
 });

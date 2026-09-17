@@ -1,4 +1,4 @@
-import type { Balance, BalanceFilters, CreateChargesWithPaymentsInput, Payment, PaymentFilters } from '@/types/payment';
+import type { Balance, BalanceFilters, CreateChargesWithPaymentsInput, CreatedChargeWithPayment, Payment, PaymentFilters } from '@/types/payment';
 import { qs, request } from './http';
 import { datedPdfName, downloadPdfFrom } from './pdf';
 
@@ -27,15 +27,16 @@ export const paymentsApi = {
       datedPdfName('payments'),
     ),
   create: (input: CreateChargesWithPaymentsInput | CreateChargesWithPaymentsInput[]) =>
-    request<unknown>('/api/learners/payments', { method: 'POST', body: JSON.stringify(input) }),
+    request<CreatedChargeWithPayment[]>('/api/learners/payments', { method: 'POST', body: JSON.stringify(input) }),
   deleteCharge: (chargeId: number) =>
     request<unknown>(`/api/learners/payments?charge_id=${encodeURIComponent(String(chargeId))}`, { method: 'DELETE' }),
 };
 
 // qs() writes "null" for anything empty, which the API reads back as absent,
 // so the flag is only ever sent when it is on.
-function balanceParams(filters: BalanceFilters) {
+function balanceParams(schoolId: string, filters: BalanceFilters) {
   return qs({
+    school_id: schoolId,
     learner_id: filters.learner_id,
     class_name: filters.class_name,
     gender_name: filters.gender_name,
@@ -47,11 +48,11 @@ function balanceParams(filters: BalanceFilters) {
 }
 
 export const balancesApi = {
-  list: (filters: BalanceFilters = {}) =>
-    request<Balance[]>(`/api/learners/balances?${balanceParams(filters)}`),
-  downloadPdf: (filters: BalanceFilters = {}) =>
+  list: (schoolId: string, filters: BalanceFilters = {}) =>
+    request<Balance[]>(`/api/learners/balances?${balanceParams(schoolId, filters)}`),
+  downloadPdf: (schoolId: string, filters: BalanceFilters = {}) =>
     downloadPdfFrom(
-      `/api/learners/balances?${balanceParams(filters)}&format=pdf`,
+      `/api/learners/balances?${balanceParams(schoolId, filters)}&format=pdf`,
       datedPdfName('outstanding-balances'),
     ),
 };

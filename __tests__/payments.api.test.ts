@@ -253,7 +253,7 @@ describe("POST /api/learners/payments (record a payment)", () => {
   });
 
   it("exports the outstanding balances table as a valid PDF", async () => {
-    const response = await GET_BALANCES(makeRequest("http://localhost/api/learners/balances?format=pdf"));
+    const response = await GET_BALANCES(makeRequest(`http://localhost/api/learners/balances?school_id=${SCHOOL}&format=pdf`));
     expect(response.status).toBe(200);
     expect(response.headers.get("Content-Type")).toBe("application/pdf");
     expect(response.headers.get("Content-Disposition")).toContain("outstanding-balances-");
@@ -268,6 +268,34 @@ describe("POST /api/learners/payments (record a payment)", () => {
     expect(response.status).toBe(400);
     const after = await query("SELECT count(*)::int FROM charges WHERE learner_id = $1", [learnerId]);
     expect(after.rows[0].count).toBe(before.rows[0].count);
+  });
+});
+
+describe("GET /api/learners/balances (stays charges-based)", () => {
+  it("does not show a mandatory fee for a learner who has never been charged for it", async () => {
+    // A fresh learner untouched by any payment in this suite — "Test Fee" is
+    // MANDATORY/ALL_LEARNERS/ALL_PERIODS by default (set in beforeAll), so
+    // this learner would appear on the Unpaid Mandatory Payments page, but
+    // /owing (this endpoint) is deliberately scoped to real charges only —
+    // a never-charged fee stays invisible here regardless of priority.
+    const [neverPaid] = await createLearners([{
+      school_id: SCHOOL,
+      first_name: "Never",
+      last_name: "Paid",
+      gender_id: genderId,
+      date_of_birth: "2015-01-01",
+      class_category_id: classId,
+      academic_year_id: yearId,
+    }]);
+
+    const response = await GET_BALANCES(makeRequest(`http://localhost/api/learners/balances?school_id=${SCHOOL}&learner_id=${neverPaid.learner_id}`));
+    expect(response.status).toBe(200);
+
+    const rows = await readJson(response);
+    expect(rows).toEqual([]);
+
+    await query("DELETE FROM enrolments WHERE learner_id = $1", [neverPaid.learner_id]);
+    await query("DELETE FROM learners WHERE learner_id = $1", [neverPaid.learner_id]);
   });
 });
 
@@ -361,7 +389,7 @@ describe("Soft-deleted learners are excluded from payments/balances (regression)
     const paymentsGet = await GET(makeRequest(`http://localhost/api/learners/payments?learner_id=${softDeleteLearner.learner_id}`));
     expect(await readJson(paymentsGet)).toEqual([]);
 
-    const balancesGet = await GET_BALANCES(makeRequest(`http://localhost/api/learners/balances?learner_id=${softDeleteLearner.learner_id}`));
+    const balancesGet = await GET_BALANCES(makeRequest(`http://localhost/api/learners/balances?school_id=${SCHOOL}&learner_id=${softDeleteLearner.learner_id}`));
     expect(await readJson(balancesGet)).toEqual([]);
 
     // cleanup: this learner's charge/payment/enrolment aren't touched by DELETE_LEARNER (soft delete only)

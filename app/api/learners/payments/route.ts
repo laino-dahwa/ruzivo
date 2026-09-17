@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import {getPayments} from "../../../../repositories/payment/read/getPayments"
-import {createChargesWithPayments, PaymentLimitError} from "../../../../repositories/payment/create/createNewPayment"
+import {createChargesWithPayments, PaymentLimitError, DeletedLearnerError} from "../../../../repositories/payment/create/createNewPayment"
 import {deleteCharge} from "../../../../repositories/payment/delete/delete_payment"
 import { URLSearchParams } from "url";
 import { normalizeToArray, validationErrorBody } from "../../../../lib/validation/bulk";
@@ -128,6 +128,14 @@ export async function POST(request:Request){
                     error: error.violations[0].message,
                     details: error.violations,
                 },
+                { status: 400 }
+            )
+        }
+
+        // An archived learner is a rejected request, not a server fault.
+        if (error instanceof DeletedLearnerError) {
+            return NextResponse.json(
+                { error: error.message },
                 { status: 400 }
             )
         }

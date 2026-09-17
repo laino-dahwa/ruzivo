@@ -6,11 +6,11 @@ import {
   classCategoriesApi,
   expenseCategoriesApi,
   gendersApi,
-  incomeCategoriesApi,
   paymentMethodsApi,
   paymentPeriodsApi,
   rolesApi,
 } from '../../services/reference-data';
+import { incomeCategoriesApi } from '../../services/income-categories';
 
 export function useSchoolReferenceData(schoolId: string | null) {
   const genders = useQuery({ queryKey: ['genders', schoolId], queryFn: () => gendersApi.list(schoolId!), enabled: !!schoolId });

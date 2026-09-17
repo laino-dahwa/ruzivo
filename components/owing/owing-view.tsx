@@ -25,8 +25,8 @@ export function OwingView() {
   });
 
   const balancesQuery = useQuery({
-    queryKey: ['balances', filters],
-    queryFn: () => balancesApi.list({
+    queryKey: ['balances', schoolId, filters],
+    queryFn: () => balancesApi.list(schoolId!, {
       learner_id: filters.learner_id || null,
       class_name: filters.class_name || null,
       gender_name: filters.gender_name || null,
@@ -36,6 +36,7 @@ export function OwingView() {
       // A settled fee is not outstanding, so it is left off this table.
       only_outstanding: true,
     }),
+    enabled: !!schoolId,
   });
 
   return (
@@ -45,9 +46,27 @@ export function OwingView() {
         <div className="rounded-2xl border border-border/80 bg-card p-5">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div><label className="mb-1 block text-[10px] font-semibold text-muted-foreground">Learner name</label><LearnerAutocomplete placeholder="Search by name…" onSelect={(learner) => setFilters((f) => ({ ...f, learner_id: learner?.learner_id ?? '' }))} /></div>
-            <div><label className="mb-1 block text-[10px] font-semibold text-muted-foreground">Class</label><input value={filters.class_name} onChange={(e) => setFilters((f) => ({ ...f, class_name: e.target.value }))} placeholder="e.g. Grade 4" className="field h-9 text-xs" /></div>
-            <div><label className="mb-1 block text-[10px] font-semibold text-muted-foreground">Gender</label><input value={filters.gender_name} onChange={(e) => setFilters((f) => ({ ...f, gender_name: e.target.value }))} placeholder="e.g. Female" className="field h-9 text-xs" /></div>
-            <div><label className="mb-1 block text-[10px] font-semibold text-muted-foreground">Academic year</label><input value={filters.academic_year} onChange={(e) => setFilters((f) => ({ ...f, academic_year: e.target.value }))} placeholder="e.g. 2026" className="field h-9 text-xs" /></div>
+            <div>
+              <label className="mb-1 block text-[10px] font-semibold text-muted-foreground">Class</label>
+              <select value={filters.class_name} onChange={(e) => setFilters((f) => ({ ...f, class_name: e.target.value }))} className="field h-9 text-xs">
+                <option value="">All</option>
+                {ref.classCategories.data?.map((c) => <option key={c.class_category_id} value={c.class_name}>{c.class_name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-[10px] font-semibold text-muted-foreground">Gender</label>
+              <select value={filters.gender_name} onChange={(e) => setFilters((f) => ({ ...f, gender_name: e.target.value }))} className="field h-9 text-xs">
+                <option value="">All</option>
+                {ref.genders.data?.map((g) => <option key={g.gender_id} value={g.gender_name}>{g.gender_name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-[10px] font-semibold text-muted-foreground">Academic year</label>
+              <select value={filters.academic_year} onChange={(e) => setFilters((f) => ({ ...f, academic_year: e.target.value }))} className="field h-9 text-xs">
+                <option value="">All</option>
+                {ref.academicYears.data?.map((a) => <option key={a.academic_year_id} value={a.academic_year_name}>{a.academic_year_name}</option>)}
+              </select>
+            </div>
             <div>
               <label className="mb-1 block text-[10px] font-semibold text-muted-foreground">Income category</label>
               <select value={filters.income_name} onChange={(e) => setFilters((f) => ({ ...f, income_name: e.target.value }))} className="field h-9 text-xs">
@@ -67,7 +86,7 @@ export function OwingView() {
           <div className="mt-4 flex justify-end">
             <DownloadPdfButton
               disabled={balancesQuery.isLoading}
-              onDownload={() => balancesApi.downloadPdf({
+              onDownload={() => balancesApi.downloadPdf(schoolId!, {
                 learner_id: filters.learner_id || null,
                 class_name: filters.class_name || null,
                 gender_name: filters.gender_name || null,
@@ -82,15 +101,16 @@ export function OwingView() {
           <div className="mt-4 overflow-x-auto rounded-lg border border-border/60">
             <table className="w-full text-left text-xs">
               <thead className="bg-secondary/60 text-[10px] uppercase text-muted-foreground">
-                <tr><th className="px-3 py-2 font-semibold">Learner</th><th className="px-3 py-2 font-semibold">Income</th><th className="px-3 py-2 font-semibold">Charged</th><th className="px-3 py-2 font-semibold">Paid</th><th className="px-3 py-2 font-semibold">Balance</th></tr>
+                <tr><th className="px-3 py-2 font-semibold">Learner</th><th className="px-3 py-2 font-semibold">Income</th><th className="px-3 py-2 font-semibold">Period</th><th className="px-3 py-2 font-semibold">Charged</th><th className="px-3 py-2 font-semibold">Paid</th><th className="px-3 py-2 font-semibold">Balance</th></tr>
               </thead>
               <tbody className="divide-y divide-border/60">
-                {balancesQuery.isLoading && <tr><td className="px-3 py-3 text-muted-foreground" colSpan={5}>Loading…</td></tr>}
-                {!balancesQuery.isLoading && (balancesQuery.data?.length ?? 0) === 0 && <tr><td className="px-3 py-3 text-muted-foreground" colSpan={5}>No outstanding balances</td></tr>}
+                {balancesQuery.isLoading && <tr><td className="px-3 py-3 text-muted-foreground" colSpan={6}>Loading…</td></tr>}
+                {!balancesQuery.isLoading && (balancesQuery.data?.length ?? 0) === 0 && <tr><td className="px-3 py-3 text-muted-foreground" colSpan={6}>No outstanding balances</td></tr>}
                 {balancesQuery.data?.map((balance, index) => (
                   <tr key={index}>
                     <td className="px-3 py-2">{balance.first_name} {balance.last_name}</td>
                     <td className="px-3 py-2">{balance.income_name}</td>
+                    <td className="px-3 py-2">{balance.period_name}</td>
                     <td className="px-3 py-2">{formatCurrency(balance.charged)}</td>
                     <td className="px-3 py-2">{formatCurrency(balance.paid)}</td>
                     <td className={`px-3 py-2 font-semibold ${Number(balance.balance) > 0 ? 'text-destructive' : 'text-primary'}`}>{formatCurrency(balance.balance)}</td>

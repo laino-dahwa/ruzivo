@@ -37,6 +37,35 @@ export class PaymentLimitError extends Error {
 }
 
 /**
+ * Raised when a payment targets a soft-deleted learner. The learner picker
+ * already excludes archived learners, so this only fires against a stale
+ * client or a direct API call — but it must still be refused here, since
+ * that is the one place a charge can actually be created.
+ */
+export class DeletedLearnerError extends Error {
+  readonly learnerIds: string[];
+
+  constructor(learnerIds: string[]) {
+    super(`Cannot record a payment for an archived learner: ${learnerIds.join(", ")}`);
+    this.name = "DeletedLearnerError";
+    this.learnerIds = learnerIds;
+  }
+}
+
+async function assertLearnersActive(client: PoolClient, inputs: CreateChargesWithPaymentsInput[]): Promise<void> {
+  const learnerIds = [...new Set(inputs.map((input) => input.learner_id))];
+
+  const result = await client.query(
+    `SELECT learner_id FROM learners WHERE learner_id = ANY($1::varchar[]) AND deleted_at IS NOT NULL`,
+    [learnerIds]
+  );
+
+  if (result.rows.length > 0) {
+    throw new DeletedLearnerError(result.rows.map((row) => row.learner_id));
+  }
+}
+
+/**
  * The unit a fee limit applies to. `income_categories.income_limit` is the
  * amount owed for one fee, for one learner, in one payment period of one
  * academic year — which is exactly how getBalances/getOwingReport already
@@ -202,6 +231,10 @@ export async function createChargesWithPayments(
   }
 
   return transaction(async (client) => {
+    // Runs inside the same transaction as the inserts, so a learner cannot
+    // be deleted between this check and the charge/payment rows being written.
+    await assertLearnersActive(client, inputs);
+
     // Runs inside the same transaction as the inserts, so the balance a
     // payment is validated against cannot change before it is written.
     await assertWithinLimits(client, inputs);

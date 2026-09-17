@@ -89,6 +89,11 @@ export function SearchSelect({
               event.preventDefault();
               choose(matches[0]);
             }
+            if (event.key === 'Tab' && open && matches.length > 0) {
+              // Not prevented: focus still moves to the next field as normal,
+              // this just fills the choice in first instead of leaving it blank.
+              choose(matches[0]);
+            }
             if (event.key === 'Escape' && open) {
               // Closes the list only. Marking the key handled keeps the
               // surrounding dialog open, which would otherwise close too.

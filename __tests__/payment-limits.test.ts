@@ -10,6 +10,7 @@ import { createPaymentMethod } from "../repositories/school/create/createPayment
 import { createLearners } from "../repositories/learner/create/addLearner";
 import { getLearners } from "../repositories/learner/read/getLearners";
 import { getBalances } from "../repositories/payment/read/getBalances";
+import { deleteLearner } from "../repositories/learner/delete/deleteLearner";
 import { query } from "../lib/db";
 
 // A learner owes `income_limit` for one fee, in one period, of one academic
@@ -20,8 +21,10 @@ const LIMIT = 100;
 
 let learnerId: string;
 let otherLearnerId: string;
+let archivedLearnerId: string;
 let enrolmentId: number;
 let otherEnrolmentId: number;
+let archivedEnrolmentId: number;
 let tuitionId: number;      // limit 100
 let transportId: number;    // limit 100, a second fee in the same period
 let unlimitedId: number;    // no limit configured
@@ -89,11 +92,15 @@ beforeAll(async () => {
   const created = await createLearners([
     { school_id: SCHOOL, first_name: "John", last_name: "Limit", gender_id: gender.gender_id, date_of_birth: "2015-01-01", class_category_id: classCategory.class_category_id, academic_year_id: yearId },
     { school_id: SCHOOL, first_name: "Mary", last_name: "Limit", gender_id: gender.gender_id, date_of_birth: "2015-02-01", class_category_id: classCategory.class_category_id, academic_year_id: yearId },
+    { school_id: SCHOOL, first_name: "Ada", last_name: "Archived", gender_id: gender.gender_id, date_of_birth: "2015-03-01", class_category_id: classCategory.class_category_id, academic_year_id: yearId },
   ]);
   learnerId = created[0].learner_id;
   otherLearnerId = created[1].learner_id;
+  archivedLearnerId = created[2].learner_id;
   enrolmentId = (await getLearners(learnerId, null, null, null))[0].enrolment_id;
   otherEnrolmentId = (await getLearners(otherLearnerId, null, null, null))[0].enrolment_id;
+  archivedEnrolmentId = (await getLearners(archivedLearnerId, null, null, null))[0].enrolment_id;
+  await deleteLearner(archivedLearnerId);
 });
 
 // Removes everything this suite created, so it can be re-run against a
@@ -101,7 +108,7 @@ beforeAll(async () => {
 // in FK order: the learner tables first, then the school, whose reference data
 // (fees, periods, methods, …) cascades with it.
 afterAll(async () => {
-  const learners = [learnerId, otherLearnerId];
+  const learners = [learnerId, otherLearnerId, archivedLearnerId];
   await query(`DELETE FROM payment_allocations WHERE charge_id IN (SELECT charge_id FROM charges WHERE learner_id = ANY($1::text[]))`, [learners]);
   await query(`DELETE FROM payments WHERE payment_id NOT IN (SELECT payment_id FROM payment_allocations)`);
   await query(`DELETE FROM charges WHERE learner_id = ANY($1::text[])`, [learners]);
@@ -295,13 +302,31 @@ describe("deleting a payment frees up the balance again", () => {
   });
 });
 
+describe("archived (soft-deleted) learners cannot receive new charges or payments", () => {
+  it("rejects a payment for an archived learner and stores nothing", async () => {
+    const { status, body } = await post(payment(50, { learner: archivedLearnerId, enrolment: archivedEnrolmentId }));
+    expect(status).toBe(400);
+    expect(body.error).toContain("archived learner");
+    expect(await totalPaid({ learner: archivedLearnerId })).toBe(0);
+  });
+
+  it("rejects the whole bulk request if any line targets an archived learner", async () => {
+    const { status } = await post([
+      payment(10),
+      payment(50, { learner: archivedLearnerId, enrolment: archivedEnrolmentId }),
+    ]);
+    expect(status).toBe(400);
+    expect(await totalPaid()).toBe(0);
+  });
+});
+
 describe("balances stay consistent with the enforced limit", () => {
   it("never lets the reported balance go negative", async () => {
     await post(payment(60));
     await post(payment(40));
     await post(payment(25)); // rejected
 
-    const balance = (await getBalances(learnerId, null, null, null, "Tuition", "January"))[0];
+    const balance = (await getBalances(SCHOOL, learnerId, null, null, null, "Tuition", "January"))[0];
     expect(Number(balance.charged)).toBe(LIMIT);
     expect(Number(balance.paid)).toBe(100);
     expect(Number(balance.balance)).toBe(0);

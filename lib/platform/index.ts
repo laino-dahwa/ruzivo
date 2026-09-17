@@ -19,6 +19,13 @@ export interface DesktopBridge {
   saveFile(suggestedName: string, data: Uint8Array): Promise<void>;
   /** Points the window (and so the taskbar) at the school's icon. */
   setWindowIcon?(url: string): void;
+  /**
+   * Prints a standalone HTML document (see lib/receipt/buildReceiptHtml.ts)
+   * via the OS print dialog, so the user picks the physical printer
+   * themselves — no assumption is made about which installed printer is the
+   * receipt printer.
+   */
+  printReceipt(html: string): Promise<{ ok: boolean; error?: string }>;
   checkForUpdates(): void;
   /** Restarts the app to install an already-downloaded update. */
   installUpdate(): void;

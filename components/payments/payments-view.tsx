@@ -2,12 +2,18 @@
 
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Printer, Trash2 } from 'lucide-react';
 import { useToast } from '../../app/components/hooks/use-toast';
 import { useCurrentSchoolId } from '../../lib/client/current-school-id';
+import { useSchoolName } from '../../lib/client/use-school-name';
+import { useSchoolLogo } from '../../lib/client/use-school-logo';
 import { currentAcademicYear } from '../../lib/client/current-academic-year';
 import { formatCurrency } from '../../lib/currency';
+import { buildReceiptHtml } from '../../lib/receipt/buildReceiptHtml';
 import { balancesApi, paymentsApi } from '../../services/payments';
+import { learnersApi } from '../../services/learners';
+import { schoolLogoUrl } from '../../services/logo';
+import { printHtml } from '../../services/print';
 import type { CreateChargesWithPaymentsInput, Payment } from '../../types/payment';
 import { useSchoolReferenceData } from '../reference-data/use-school-reference-data';
 import { LearnerAutocomplete } from '../learners/learner-autocomplete';
@@ -53,6 +59,9 @@ export function PaymentsView() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const ref = useSchoolReferenceData(schoolId);
+  const { name: schoolName } = useSchoolName();
+  const { hasLogo, stamp: logoStamp } = useSchoolLogo(schoolId);
+  const [printingChargeId, setPrintingChargeId] = useState<number | null>(null);
   const [filters, setFilters] = useState({
     learner_id: '',
     class_name: '',
@@ -162,8 +171,8 @@ export function PaymentsView() {
   // endpoint the Owing page uses, and is invalidated on every payment, so the
   // remaining amounts shown here stay in step with the server.
   const balancesQuery = useQuery({
-    queryKey: ['balances'],
-    queryFn: () => balancesApi.list(),
+    queryKey: ['balances', schoolId],
+    queryFn: () => balancesApi.list(schoolId!),
     enabled: !!schoolId,
   });
 
@@ -190,8 +199,17 @@ export function PaymentsView() {
     const limit = Number(income.income_limit);
     if (!Number.isFinite(limit)) return null;
 
+    // Matched on academic year too: a mandatory fee's obligations are now
+    // enumerated for every year a learner has ever been enrolled (so unpaid
+    // prior-year fees still show on the Owing page), which means the same
+    // learner+fee+period can appear once per year. Without the year match
+    // here, a stale prior year's balance could get picked up for a payment
+    // being recorded against the current year.
     const balanceRow = balancesQuery.data?.find((b) =>
-      b.learner_id === block.learner_id && b.income_name === income.income_name && b.period_name === period.period_name);
+      b.learner_id === block.learner_id
+      && b.income_name === income.income_name
+      && b.period_name === period.period_name
+      && b.academic_year_name === currentAcademicYearName);
     const paid = Number(balanceRow?.paid ?? 0);
 
     // Amounts already entered on earlier lines of this form for the very same
@@ -216,9 +234,50 @@ export function PaymentsView() {
     };
   };
 
+  // Shares the ['learners', 'directory'] query LearnerAutocomplete already
+  // keeps warm, so a receipt can show a learner's name/class right after
+  // submission without a second round trip.
+  const learnersDirectory = useQuery({ queryKey: ['learners', 'directory'], queryFn: () => learnersApi.list() });
+
+  /**
+   * The logo URL is made absolute here (rather than left relative, like the
+   * sidebar uses it) because the receipt is rendered in a document with no
+   * origin of its own — a bare data: URL for the desktop print window, a
+   * detached popup document on the web — so a relative src would have
+   * nothing to resolve against.
+   */
+  const printReceipt = async (data: Omit<Parameters<typeof buildReceiptHtml>[0], 'schoolName' | 'logoUrl'>) => {
+    const logoUrl = hasLogo && schoolId
+      ? `${window.location.origin}${schoolLogoUrl(schoolId, { size: 256, stamp: logoStamp })}`
+      : null;
+    await printHtml(buildReceiptHtml({ schoolName, logoUrl, ...data }));
+  };
+
+  /** Reprints one already-recorded payment row from the table below, as a single-line receipt. */
+  const printReceiptFor = async (payment: Payment) => {
+    setPrintingChargeId(payment.charge_id);
+    try {
+      await printReceipt({
+        learnerName: `${payment.first_name} ${payment.last_name}`,
+        learnerId: payment.learner_id,
+        className: payment.class_name,
+        academicYearName: payment.academic_year_name,
+        methodName: payment.method_name,
+        paidAt: payment.paid_at,
+        referenceId: payment.charge_id,
+        lines: [{ incomeName: payment.income_name, periodName: payment.period_name, amountLabel: formatCurrency(payment.amount) }],
+        totalLabel: formatCurrency(payment.amount),
+      });
+    } catch (error) {
+      toast({ title: 'Could not print receipt', description: (error as Error).message, variant: 'destructive' });
+    } finally {
+      setPrintingChargeId(null);
+    }
+  };
+
   const recordPayment = useMutation({
     mutationFn: (inputs: CreateChargesWithPaymentsInput[]) => paymentsApi.create(inputs),
-    onSuccess: (_result, inputs) => {
+    onSuccess: async (result, inputs) => {
       const recorded = inputs.reduce((count, input) => count + input.income_categories.length, 0);
       toast({ title: recorded === 1 ? 'Payment recorded' : `${recorded} payments recorded` });
       setAddOpen(false);
@@ -227,6 +286,55 @@ export function PaymentsView() {
       setBlocks([emptyPaymentBlock(currentPeriodId, cashMethodId)]);
       queryClient.invalidateQueries({ queryKey: ['payments'] });
       queryClient.invalidateQueries({ queryKey: ['balances'] });
+
+      // One combined receipt per learner in this submission — several fees
+      // paid for the same learner in one go print as a single transaction,
+      // not one receipt per fee. Printed one after another (never in
+      // parallel), so at most one print dialog is ever open at a time.
+      let cursor = 0;
+      for (const input of inputs) {
+        const created = result.slice(cursor, cursor + input.income_categories.length);
+        cursor += input.income_categories.length;
+        if (created.length === 0) continue;
+
+        // Reference-data ids come back from Postgres as strings (bigint
+        // columns are serialized as strings to avoid precision loss), but
+        // the submitted input's ids are real numbers (Number()-converted
+        // just above, for the API) — a strict === between them silently
+        // failed every lookup here, which is why every line printed as the
+        // generic "Fee" fallback with no period/method. Number() on the
+        // reference-data side normalizes both to the same type.
+        const learner = learnersDirectory.data?.find((l) => l.learner_id === input.learner_id);
+        const period = ref.paymentPeriods.data?.find((p) => Number(p.payment_period_id) === input.payment_period_id);
+        const year = ref.academicYears.data?.find((y) => String(y.academic_year_id) === String(input.academic_year_id));
+        const method = ref.paymentMethods.data?.find((m) => Number(m.payment_method_id) === input.payment_method_id);
+
+        const lines = created.map((entry, i) => {
+          const income = ref.incomeCategories.data?.find((c) => Number(c.income_category_id) === input.income_categories[i].income_category_id);
+          return {
+            incomeName: income?.income_name ?? 'Fee',
+            periodName: period?.period_name ?? '',
+            amountLabel: formatCurrency(entry.payment.amount),
+          };
+        });
+        const total = created.reduce((sum, entry) => sum + Number(entry.payment.amount), 0);
+
+        try {
+          await printReceipt({
+            learnerName: learner ? `${learner.first_name} ${learner.last_name}` : input.learner_id,
+            learnerId: input.learner_id,
+            className: learner?.class_name ?? '',
+            academicYearName: year?.academic_year_name ?? '',
+            methodName: method?.method_name ?? '',
+            paidAt: created[0].payment.paid_at,
+            referenceId: created[0].charge.charge_id,
+            lines,
+            totalLabel: formatCurrency(total),
+          });
+        } catch (error) {
+          toast({ title: 'Could not print receipt', description: (error as Error).message, variant: 'destructive' });
+        }
+      }
     },
     onError: (error) => toast({ title: 'Payment failed', description: (error as Error).message, variant: 'destructive' }),
   });
@@ -540,9 +648,27 @@ export function PaymentsView() {
           <div className="rounded-2xl border border-border/80 bg-card p-5">
             <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div><label className="mb-1 block text-[10px] font-semibold text-muted-foreground">Learner name</label><LearnerAutocomplete placeholder="Search by name…" onSelect={(learner) => setFilters((f) => ({ ...f, learner_id: learner?.learner_id ?? '' }))} /></div>
-              <div><label className="mb-1 block text-[10px] font-semibold text-muted-foreground">Class</label><input value={filters.class_name} onChange={(e) => setFilters((f) => ({ ...f, class_name: e.target.value }))} placeholder="e.g. Grade 4" className="field h-9 text-xs" /></div>
-              <div><label className="mb-1 block text-[10px] font-semibold text-muted-foreground">Gender</label><input value={filters.gender_name} onChange={(e) => setFilters((f) => ({ ...f, gender_name: e.target.value }))} placeholder="e.g. Female" className="field h-9 text-xs" /></div>
-              <div><label className="mb-1 block text-[10px] font-semibold text-muted-foreground">Academic year</label><input value={filters.academic_year} onChange={(e) => setFilters((f) => ({ ...f, academic_year: e.target.value }))} placeholder="e.g. 2026" className="field h-9 text-xs" /></div>
+              <div>
+                <label className="mb-1 block text-[10px] font-semibold text-muted-foreground">Class</label>
+                <select value={filters.class_name} onChange={(e) => setFilters((f) => ({ ...f, class_name: e.target.value }))} className="field h-9 text-xs">
+                  <option value="">All</option>
+                  {ref.classCategories.data?.map((c) => <option key={c.class_category_id} value={c.class_name}>{c.class_name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-[10px] font-semibold text-muted-foreground">Gender</label>
+                <select value={filters.gender_name} onChange={(e) => setFilters((f) => ({ ...f, gender_name: e.target.value }))} className="field h-9 text-xs">
+                  <option value="">All</option>
+                  {ref.genders.data?.map((g) => <option key={g.gender_id} value={g.gender_name}>{g.gender_name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-[10px] font-semibold text-muted-foreground">Academic year</label>
+                <select value={filters.academic_year} onChange={(e) => setFilters((f) => ({ ...f, academic_year: e.target.value }))} className="field h-9 text-xs">
+                  <option value="">All</option>
+                  {ref.academicYears.data?.map((a) => <option key={a.academic_year_id} value={a.academic_year_name}>{a.academic_year_name}</option>)}
+                </select>
+              </div>
               <div>
                 <label className="mb-1 block text-[10px] font-semibold text-muted-foreground">Income category</label>
                 <select value={filters.income_name} onChange={(e) => setFilters((f) => ({ ...f, income_name: e.target.value }))} className="field h-9 text-xs">
@@ -596,15 +722,27 @@ export function PaymentsView() {
                       <td className="px-3 py-2">{payment.method_name}</td>
                       <td className="px-3 py-2 font-semibold">{formatCurrency(payment.amount)}</td>
                       <td className="px-3 py-2 text-right">
-                        <button
-                          type="button"
-                          title="Delete this payment"
-                          disabled={deleteCharge.isPending}
-                          onClick={() => setPendingDeletePayment(payment)}
-                          className="rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            type="button"
+                            title="Print receipt"
+                            disabled={printingChargeId === payment.charge_id}
+                            onClick={() => printReceiptFor(payment)}
+                            className="rounded-md p-1.5 text-muted-foreground hover:bg-primary/10 hover:text-primary disabled:opacity-50"
+                            data-testid={`button-print-receipt-${payment.charge_id}`}
+                          >
+                            <Printer size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            title="Delete this payment"
+                            disabled={deleteCharge.isPending}
+                            onClick={() => setPendingDeletePayment(payment)}
+                            className="rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}

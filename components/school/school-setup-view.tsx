@@ -11,19 +11,19 @@ import {
   classCategoriesApi,
   expenseCategoriesApi,
   gendersApi,
-  incomeCategoriesApi,
   paymentMethodsApi,
   paymentPeriodsApi,
   rolesApi,
 } from '../../services/reference-data';
 import type { School } from '../../types/school';
-import type { AcademicYear, ClassCategory, ExpenseCategory, Gender, IncomeCategory, PaymentMethod, PaymentPeriod, Role } from '../../types/reference-data';
+import type { AcademicYear, ClassCategory, ExpenseCategory, Gender, PaymentMethod, PaymentPeriod, Role } from '../../types/reference-data';
 import { useSchoolReferenceData } from '../reference-data/use-school-reference-data';
 import { ReferenceListForm } from '../reference-data/reference-list-form';
 import { SectionHeading } from '../shared/section-heading';
 import { NoSchoolNotice } from '../shared/no-school-notice';
 import { SchoolLogoCard } from './school-logo-card';
 import { EmployeesCard } from './employees-card';
+import { IncomeCategoriesCard } from './income-categories-card';
 import { ErrorNotice } from '../shared/error-notice';
 
 export function SchoolSetupView() {
@@ -184,15 +184,6 @@ export function SchoolSetupView() {
             onUpdate={(id, values) => paymentMethodsApi.update(schoolId, [{ school_id: schoolId, payment_method_id: id, ...{ method_name: values.method_name } }]).then(() => invalidateRef('payment_methods'))}
             onDelete={(id) => paymentMethodsApi.remove(schoolId, 'payment_method_id', id).then(() => invalidateRef('payment_methods'))}
           />
-          <ReferenceListForm<IncomeCategory>
-            title="Income categories" rows={ref.incomeCategories.data} isLoading={ref.incomeCategories.isLoading}
-            columns={[{ key: 'income_category_id', label: 'ID' }, { key: 'income_name', label: 'Name' }, { key: 'income_limit', label: 'Limit' }]}
-            fields={[{ name: 'income_name', label: 'Name' }, { name: 'income_limit', label: 'Limit', type: 'number' }]}
-            onCreate={(values) => incomeCategoriesApi.create(schoolId, [{ school_id: schoolId, income_name: values.income_name, income_limit: values.income_limit }]).then(() => invalidateRef('income_categories'))}
-            idKey="income_category_id" itemNoun="income category"
-            onUpdate={(id, values) => incomeCategoriesApi.update(schoolId, [{ school_id: schoolId, income_category_id: id, ...{ income_name: values.income_name, income_limit: values.income_limit } }]).then(() => invalidateRef('income_categories'))}
-            onDelete={(id) => incomeCategoriesApi.remove(schoolId, 'income_category_id', id).then(() => invalidateRef('income_categories'))}
-          />
           <ReferenceListForm<ExpenseCategory>
             title="Expense categories" rows={ref.expenseCategories.data} isLoading={ref.expenseCategories.isLoading}
             columns={[{ key: 'expense_category_id', label: 'ID' }, { key: 'expense_name', label: 'Name' }]}
@@ -203,6 +194,7 @@ export function SchoolSetupView() {
             onDelete={(id) => expenseCategoriesApi.remove(schoolId, 'expense_category_id', id).then(() => invalidateRef('expense_categories'))}
           />
         </div>
+        <div className="mt-6"><IncomeCategoriesCard schoolId={schoolId} classCategories={ref.classCategories.data ?? []} paymentPeriods={ref.paymentPeriods.data ?? []} /></div>
         <div className="mt-6"><EmployeesCard schoolId={schoolId} roles={ref.roles.data ?? []} /></div>
         </>
       )}
