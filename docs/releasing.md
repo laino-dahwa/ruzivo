@@ -10,15 +10,45 @@
 - **`.github/workflows/build.yml`** — every push/PR: `npm run electron:build:prod` then `electron-builder --dir --win` (packages, doesn't publish). Catches packaging breakage on every change, not just at release time.
 - **`.github/workflows/release.yml`** — triggered by pushing a `vX.Y.Z` tag. Re-runs the full gate (migrate/lint/typecheck/test/build) as sequential steps in one job before publishing, so a release can only happen once everything has genuinely passed on the exact tagged commit. First verifies the tag matches `package.json`'s version and fails with an annotated error otherwise.
 
+## Pages that read the database must be dynamic
+
+`next build` renders pages at build time to work out which can be prerendered,
+and **there is no database during a build** — CI has no PostgreSQL service for
+the build job. A server component that queries the database before it touches
+`cookies()` will therefore fail the build with `PGDATABASE is not defined`,
+even though it works perfectly in dev.
+
+Any page that reads request state or the database needs:
+
+```ts
+export const dynamic = 'force-dynamic';
+```
+
+It is already set on `app/(app)/layout.tsx` (covering every page in the group),
+`app/login` and `app/change-password`. A new page inside `(app)` inherits it.
+
+**Before tagging, check the build survives without a database** — this is the
+one failure that local builds hide, because `.env.local` gives them a database
+that CI does not have:
+
+```bash
+mv .env.local .env.local.off; npm run build; mv .env.local.off .env.local
+```
+
 ## Cutting a release
 
 1. Bump `version` in `package.json`.
 2. Commit it.
-3. Tag and push:
+3. Push `main` first and **wait for Build and Test to go green**, then tag:
    ```bash
+   git push origin main
+   # wait for the Build workflow to pass, then:
    git tag v0.2.0
    git push origin v0.2.0
    ```
+   Tagging before Build has passed means the release workflow fails on a
+   problem that push would have caught, and the tag is left pointing at a
+   commit that cannot be released.
 4. `release.yml` runs the full gate, then `electron-builder --win --publish always`, which uploads the installer, its `.blockmap`, and `latest.yml` to a new GitHub Release for that tag.
 
 `GITHUB_TOKEN` needs `contents: write` for the publish step to create the release and upload assets — already granted via the workflow's `permissions:` block, since many repos now default that token to read-only.
