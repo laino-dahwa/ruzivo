@@ -512,9 +512,9 @@ export function PaymentsView() {
   return (
     <>
       <SectionHeading
-        eyebrow="Payments"
+        eyebrow="Money"
         title="Payments"
-        detail="Payments are created as charges + allocations via POST /api/learners/payments."
+        detail="Record what a learner has paid, and see everything received. A receipt prints automatically once a payment is saved."
         action={schoolId ? <AddRecordButton label="Record payment" onClick={() => setAddOpen(true)} testId="button-open-record-payment" /> : undefined}
       />
       {!schoolId ? <NoSchoolNotice /> : (

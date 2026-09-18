@@ -114,9 +114,9 @@ export function LearnersView() {
   return (
     <>
       <SectionHeading
-        eyebrow="Learners"
-        title="Learner records"
-        detail="Fetched live from GET /api/learners. Filters map directly to the query parameters supported by the API."
+        eyebrow="People"
+        title="Learners"
+        detail="Everyone enrolled at the school. Narrow the list with the filters, then download it if you need it on paper."
         action={schoolId ? <AddRecordButton label="Add learner" onClick={() => setAddOpen(true)} testId="button-open-add-learner" /> : undefined}
       />
       {!schoolId ? <NoSchoolNotice /> : (

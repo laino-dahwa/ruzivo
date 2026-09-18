@@ -115,7 +115,7 @@ export function ReportsView() {
   return (
     <>
       <SectionHeading
-        eyebrow="Reports"
+        eyebrow="School"
         title="Financial reports"
         detail="Income, expenses and what is still owed — for a single day, a range of dates, or one of the school's payment periods."
       />

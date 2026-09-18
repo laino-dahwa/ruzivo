@@ -76,9 +76,9 @@ export function UnpaidMandatoryView() {
   return (
     <>
       <SectionHeading
-        eyebrow="Owing"
-        title="Unpaid Mandatory Payments"
-        detail="Learners expected to pay a mandatory fee, including those who have never made a payment toward it."
+        eyebrow="Money"
+        title="Expected fees"
+        detail="Learners who should be paying a required fee, including those who have never paid anything toward it."
       />
       {!schoolId ? <NoSchoolNotice /> : (
         <>

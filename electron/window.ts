@@ -28,6 +28,9 @@ export function createMainWindow(url: string): BrowserWindow {
   const win = new BrowserWindow({
     width: 1320,
     height: 860,
+    // Held back until the first paint, so the splash hands over to a drawn
+    // page rather than to an empty frame.
+    show: false,
     backgroundColor: APP_BACKGROUND,
     icon: defaultIconPath(),
     webPreferences: {
@@ -38,6 +41,9 @@ export function createMainWindow(url: string): BrowserWindow {
       webSecurity: true,
     },
   });
+
+  win.once('ready-to-show', () => win.show());
+
   win.loadURL(url);
   return win;
 }

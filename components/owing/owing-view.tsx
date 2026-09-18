@@ -41,7 +41,11 @@ export function OwingView() {
 
   return (
     <>
-      <SectionHeading eyebrow="Owing" title="Outstanding balances" detail="Fetched live from GET /api/learners/balances." />
+      <SectionHeading
+        eyebrow="Money"
+        title="Balances"
+        detail="Fees that have been charged and are still outstanding. Learners who have never been charged appear under Expected fees."
+      />
       {!schoolId ? <NoSchoolNotice /> : (
         <div className="rounded-2xl border border-border/80 bg-card p-5">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

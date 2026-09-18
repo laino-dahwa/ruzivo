@@ -129,6 +129,34 @@
 .field:focus { border-color: hsl(var(--primary)); box-shadow: 0 0 0 3px hsl(var(--primary) / .14); }
 .field::placeholder { color: hsl(var(--muted-foreground) / .72); }
 
+/* The sidebar still scrolls when a short screen cannot fit every link —
+   clipping the last one would be worse — but the bar itself stays invisible
+   until the sidebar is hovered, so it is not a permanent stripe down the
+   middle of the chrome. Both the standard properties and the WebKit
+   pseudo-elements are here because Firefox supports only the former and
+   older Chromium only the latter. */
+.sidebar-scroll { scrollbar-width: thin; scrollbar-color: transparent transparent; }
+.sidebar-scroll:hover { scrollbar-color: hsl(var(--sidebar-foreground) / .28) transparent; }
+.sidebar-scroll::-webkit-scrollbar { width: 6px; }
+.sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
+.sidebar-scroll::-webkit-scrollbar-thumb { background: transparent; border-radius: 999px; }
+.sidebar-scroll:hover::-webkit-scrollbar-thumb { background: hsl(var(--sidebar-foreground) / .28); }
+
+/* The document editor renders the same limited markup that
+   lib/documents/renderDocumentPdf draws, so what is typed here matches the
+   printed page. Tailwind's reset strips heading and list styling, which the
+   editor needs back for the preview to mean anything. */
+.document-body h1 { font-size: 1.25rem; font-weight: 700; margin: .75rem 0 .4rem; }
+.document-body h2 { font-size: 1.1rem; font-weight: 700; margin: .7rem 0 .35rem; }
+.document-body h3 { font-size: 1rem; font-weight: 700; margin: .6rem 0 .3rem; }
+.document-body p { margin: 0 0 .7rem; }
+.document-body ul { list-style: disc; padding-left: 1.4rem; margin: 0 0 .7rem; }
+.document-body ol { list-style: decimal; padding-left: 1.4rem; margin: 0 0 .7rem; }
+.document-body li { margin: 0 0 .2rem; }
+.document-body strong, .document-body b { font-weight: 700; }
+.document-body em, .document-body i { font-style: italic; }
+.document-body u { text-decoration: underline; }
+
 /* A native <select> popup takes its highlight from the OS accent colour, which
    lands as Windows blue in the middle of this palette. Chromium 135+ lets the
    picker itself be styled, so the highlight becomes the same terracotta as the

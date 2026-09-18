@@ -8,6 +8,7 @@ import { backupEmbeddedDataDir, backupExistingViaPgDump } from './backup-manager
 import { applyMigrations, getPendingMigrations } from './migrations';
 import { startNextServer, stopNextServer } from './next-server';
 import { createMainWindow, createSetupWindow } from './window';
+import { closeSplash, openSplash, setSplashStatus } from './splash';
 import { checkForUpdates, initAutoUpdater, quitAndInstallUpdate } from './updater';
 
 // Set RUZIVO_FORCE_PRODUCTION=1 to exercise the packaged-app startup path
@@ -188,10 +189,15 @@ function resolveDbConfigViaSetupWindow(): Promise<{ config: DesktopDbConfig & { 
 }
 
 async function startProductionFlow(): Promise<void> {
+  // Up before anything slow happens, so the very first thing after a
+  // double-click is a window rather than an empty desktop.
+  openSplash();
+
   let dbConfig = getDbConfig();
   const savedMode = getProvisioningMode();
 
   if (dbConfig && savedMode === 'embedded') {
+    setSplashStatus('Starting the database…');
     try {
       await startEmbeddedPostgres(dbConfig, app.getPath('userData'));
       ownsEmbeddedPostgres = true;
@@ -200,6 +206,7 @@ async function startProductionFlow(): Promise<void> {
       dbConfig = null;
     }
   } else if (dbConfig && savedMode === 'existing') {
+    setSplashStatus('Connecting to the database…');
     const result = await testConnection(dbConfig);
     if (!result.ok) {
       console.warn('[startup] saved Postgres config no longer works, asking user to reconfigure:', result.error);
@@ -208,8 +215,13 @@ async function startProductionFlow(): Promise<void> {
   }
 
   if (!dbConfig) {
+    // The setup window is the user's to work through at their own pace, so
+    // the "please wait" splash gets out of the way for it and comes back
+    // once there is something to wait for again.
+    closeSplash();
     const resolved = await resolveDbConfigViaSetupWindow();
     dbConfig = resolved.config;
+    openSplash();
   }
 
   const migrationsDir = app.isPackaged
@@ -217,11 +229,18 @@ async function startProductionFlow(): Promise<void> {
     : path.join(__dirname, '..', 'migrations');
   const mode = getProvisioningMode();
 
+  setSplashStatus('Checking your records…');
   const pending = await getPendingMigrations(dbConfig, migrationsDir);
-  isMigratingOrBackingUp = true;
-  try {
-    if (pending.length > 0) {
+
+  // Only when there is genuinely something to apply. This used to run the
+  // migration runner a second time on every single launch — a fresh
+  // connection and a fresh load of the migration library, to do nothing at
+  // all — because the dry run above had already established the answer.
+  if (pending.length > 0) {
+    isMigratingOrBackingUp = true;
+    try {
       console.log(`[startup] ${pending.length} migration(s) pending, backing up before applying:`, pending);
+      setSplashStatus('Updating your records…');
       const backupsDir = path.join(app.getPath('userData'), 'backups');
 
       if (mode === 'embedded') {
@@ -239,20 +258,27 @@ async function startProductionFlow(): Promise<void> {
           console.error('[backup] pg_dump backup failed, proceeding with migration anyway:', error);
         });
       }
-    }
 
-    const applied = await applyMigrations(dbConfig, migrationsDir);
-    console.log(`[startup] applied ${applied.length} migration(s):`, applied);
-  } finally {
-    isMigratingOrBackingUp = false;
+      const applied = await applyMigrations(dbConfig, migrationsDir);
+      console.log(`[startup] applied ${applied.length} migration(s):`, applied);
+    } finally {
+      isMigratingOrBackingUp = false;
+    }
   }
 
   const appRoot = app.isPackaged ? process.resourcesPath : path.join(__dirname, '..');
+  setSplashStatus('Almost ready…');
   await startNextServer({ appRoot, port: NEXT_SERVER_PORT, dbConfig });
 
   setupWindow?.close();
   setupWindow = null;
   mainWindow = createMainWindow(`http://127.0.0.1:${NEXT_SERVER_PORT}`);
+
+  // Handed over only once the app has actually painted, so there is never a
+  // gap with no window on screen. Closed on 'closed' too, in case the window
+  // fails before it ever paints and would otherwise strand the splash.
+  mainWindow.once('ready-to-show', closeSplash);
+  mainWindow.once('closed', closeSplash);
 
   if (app.isPackaged) {
     initAutoUpdater(mainWindow, () => isMigratingOrBackingUp);
@@ -282,6 +308,9 @@ app.whenReady().then(async () => {
     }
   } catch (error) {
     console.error('[startup] failed:', error);
+    // Down before the dialog, or a "please wait" window sits behind an error
+    // saying the opposite.
+    closeSplash();
     dialog.showErrorBox('SSV Admin failed to start', error instanceof Error ? error.message : String(error));
     app.quit();
   }

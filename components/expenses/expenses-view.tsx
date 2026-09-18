@@ -86,9 +86,9 @@ export function ExpensesView() {
   return (
     <>
       <SectionHeading
-        eyebrow="Expenses"
+        eyebrow="Money"
         title="Expenses"
-        detail="Backed by GET/POST /api/schools/[school_id]/expenses."
+        detail="What the school has spent, and on what. Salaries appear here automatically each time payroll is generated."
         action={schoolId ? <AddRecordButton label="Log expense" onClick={() => setAddOpen(true)} testId="button-open-log-expense" /> : undefined}
       />
       {!schoolId ? <NoSchoolNotice /> : (
