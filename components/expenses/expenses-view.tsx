@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2 } from 'lucide-react';
 import { useToast } from '../../app/components/hooks/use-toast';
 import { useCurrentSchoolId } from '../../lib/client/current-school-id';
@@ -15,6 +15,7 @@ import { ErrorNotice } from '../shared/error-notice';
 import { ConfirmDialog } from '../shared/confirm-dialog';
 import { DownloadPdfButton } from '../shared/download-pdf-button';
 import { AddRecordButton, FormDialog } from '../shared/form-dialog';
+import { PagedListFooter, usePagedList } from '../shared/paged-list';
 
 type ExpenseRow = { expense_category_id: string; amount: string; expense_date: string; description: string };
 
@@ -31,7 +32,12 @@ export function ExpensesView() {
   const [pendingDeleteExpense, setPendingDeleteExpense] = useState<Expense | null>(null);
   const [addOpen, setAddOpen] = useState(false);
 
-  const expensesQuery = useQuery({ queryKey: ['expenses', schoolId], queryFn: () => expensesApi.list(schoolId!), enabled: !!schoolId });
+  // Newest first, one page at a time — see components/shared/paged-list.tsx.
+  const { query: expensesQuery, rows: expenses, totalCount, totalAmount: loggedTotal } = usePagedList({
+    queryKey: ['expenses', schoolId],
+    fetchPage: (cursor) => expensesApi.listPage(schoolId!, cursor),
+    enabled: !!schoolId,
+  });
 
   const categoryName = (id: number) => ref.expenseCategories.data?.find((c) => c.expense_category_id === id)?.expense_name ?? '—';
 
@@ -158,8 +164,8 @@ export function ExpensesView() {
                 </thead>
                 <tbody className="divide-y divide-border/60">
                   {expensesQuery.isLoading && <tr><td className="px-3 py-3 text-muted-foreground" colSpan={5}>Loading…</td></tr>}
-                  {!expensesQuery.isLoading && (expensesQuery.data?.length ?? 0) === 0 && <tr><td className="px-3 py-3 text-muted-foreground" colSpan={5}>No expenses found</td></tr>}
-                  {expensesQuery.data?.map((expense) => (
+                  {!expensesQuery.isLoading && expenses.length === 0 && <tr><td className="px-3 py-3 text-muted-foreground" colSpan={5}>No expenses found</td></tr>}
+                  {expenses.map((expense) => (
                     <tr key={expense.expense_id}>
                       <td className="px-3 py-2">{expense.expense_date ? new Date(expense.expense_date).toLocaleDateString('en-GB') : ''}</td>
                       <td className="px-3 py-2">{categoryName(expense.expense_category_id)}</td>
@@ -181,6 +187,16 @@ export function ExpensesView() {
                 </tbody>
               </table>
             </div>
+            <PagedListFooter
+              shown={expenses.length}
+              totalCount={totalCount}
+              totalAmount={loggedTotal}
+              noun="expenses"
+              hasMore={!!expensesQuery.hasNextPage}
+              loadingMore={expensesQuery.isFetchingNextPage}
+              onLoadMore={() => expensesQuery.fetchNextPage()}
+              testId="expenses-list"
+            />
             <ErrorNotice error={expensesQuery.error} />
           </div>
         </>

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import {getPayments} from "../../../../repositories/payment/read/getPayments"
+import {getPayments, getPaymentsPage} from "../../../../repositories/payment/read/getPayments"
+import { parseLimit } from "../../../../lib/pagination"
 import {createChargesWithPayments, PaymentLimitError, DeletedLearnerError} from "../../../../repositories/payment/create/createNewPayment"
 import {deleteCharge} from "../../../../repositories/payment/delete/delete_payment"
 import { URLSearchParams } from "url";
@@ -24,14 +25,32 @@ export async function GET(request:Request) {
         
         const {searchParams} = new URL(request.url)
 
-        const  learner_id  =getOptionalParam(searchParams,"learner_id");
-        const  class_name = getOptionalParam(searchParams,"class_name")
-        const  gender_name = getOptionalParam(searchParams,"gender_name")
-        const  academic_year = getOptionalParam(searchParams,"academic_year")
-         const  income_name = getOptionalParam(searchParams,"income_name")
-        const  payment_period = getOptionalParam(searchParams,"payment_period")
-        const  method_name = getOptionalParam(searchParams,"method_name")
-        const response = await getPayments(learner_id,class_name,gender_name,academic_year,income_name,payment_period,method_name)
+        // Required: payments are only ever listed for one school.
+        const  school_id = getOptionalParam(searchParams,"school_id")
+        if (!school_id) {
+            return NextResponse.json({ error: "school_id is required" }, { status: 400 })
+        }
+
+        const filters = {
+            learner_id: getOptionalParam(searchParams,"learner_id"),
+            class_name: getOptionalParam(searchParams,"class_name"),
+            gender_name: getOptionalParam(searchParams,"gender_name"),
+            academic_year: getOptionalParam(searchParams,"academic_year"),
+            income_name: getOptionalParam(searchParams,"income_name"),
+            payment_period: getOptionalParam(searchParams,"payment_period"),
+            method_name: getOptionalParam(searchParams,"method_name"),
+        }
+
+        // `?limit=` asks for one page plus totals (the Payments page); without
+        // it, every matching row is returned (PDF export, older callers).
+        const limit = parseLimit(searchParams)
+        if (limit !== null && !isPdfFormat(searchParams)) {
+            return NextResponse.json(
+                await getPaymentsPage(school_id, filters, limit, getOptionalParam(searchParams,"cursor"))
+            )
+        }
+
+        const response = await getPayments(school_id, filters)
 
         if (isPdfFormat(searchParams)) {
             const total = response.reduce((sum, row) => sum + Number(row.amount || 0), 0)
@@ -62,10 +81,10 @@ export async function GET(request:Request) {
 
     }catch(error){
 
-        console.error("Get learners error: ",error)
+        console.error("Get payments error: ",error)
         return NextResponse.json(
             {
-                error:"Failed to retrieve learners",
+                error:"Failed to retrieve payments",
             },
             {
                 status:500,

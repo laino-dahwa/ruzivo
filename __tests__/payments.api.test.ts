@@ -242,7 +242,7 @@ describe("POST /api/learners/payments (record a payment)", () => {
   });
 
   it("exports the payments table as a valid PDF", async () => {
-    const response = await GET(makeRequest("http://localhost/api/learners/payments?format=pdf"));
+    const response = await GET(makeRequest(`http://localhost/api/learners/payments?school_id=${SCHOOL}&format=pdf`));
     expect(response.status).toBe(200);
     expect(response.headers.get("Content-Type")).toBe("application/pdf");
     expect(response.headers.get("Content-Disposition")).toContain("payments-");
@@ -306,7 +306,7 @@ describe("GET /api/learners/payments (retrieve + filters)", () => {
       body: JSON.stringify(makePaymentInput(75)),
     })));
 
-    const response = await GET(makeRequest(`http://localhost/api/learners/payments?learner_id=${learnerId}`));
+    const response = await GET(makeRequest(`http://localhost/api/learners/payments?school_id=${SCHOOL}&learner_id=${learnerId}`));
     const body = await readJson(response);
     const match = body.find((row: { charge_id: number }) => row.charge_id === created.charge.charge_id);
     expect(match).toBeDefined();
@@ -315,9 +315,55 @@ describe("GET /api/learners/payments (retrieve + filters)", () => {
   });
 
   it("returns an empty array for a nonexistent learner_id filter", async () => {
-    const response = await GET(makeRequest("http://localhost/api/learners/payments?learner_id=NOSUCHID"));
+    const response = await GET(makeRequest(`http://localhost/api/learners/payments?school_id=${SCHOOL}&learner_id=NOSUCHID`));
     expect(response.status).toBe(200);
     expect(await readJson(response)).toEqual([]);
+  });
+
+  it("rejects a request without school_id", async () => {
+    const response = await GET(makeRequest(`http://localhost/api/learners/payments?learner_id=${learnerId}`));
+    expect(response.status).toBe(400);
+  });
+
+  it("does not return this school's payments when listing another school (tenant isolation)", async () => {
+    const response = await GET(makeRequest(`http://localhost/api/learners/payments?school_id=ZZZ&learner_id=${learnerId}`));
+    expect(response.status).toBe(200);
+    expect(await readJson(response)).toEqual([]);
+  });
+});
+
+describe("GET /api/learners/payments?limit= (paged)", () => {
+  it("pages newest-first with no gaps or repeats, and totals cover every matching row", async () => {
+    for (const amount of [11, 12, 13]) {
+      await POST(makeRequest("http://localhost/api/learners/payments", {
+        method: "POST",
+        body: JSON.stringify(makePaymentInput(amount)),
+      }));
+    }
+    const base = `http://localhost/api/learners/payments?school_id=${SCHOOL}&learner_id=${learnerId}`;
+    const all = await readJson(await GET(makeRequest(base)));
+    const expectedTotal = all.reduce((sum: number, row: { amount: string }) => sum + Number(row.amount), 0);
+
+    const first = await readJson(await GET(makeRequest(`${base}&limit=2`)));
+    expect(first.rows).toHaveLength(2);
+    expect(first.next_cursor).toEqual(expect.any(String));
+    expect(first.total_count).toBe(all.length);
+    expect(Number(first.total_amount)).toBe(expectedTotal);
+    // Newest first: the last of the three just recorded leads.
+    expect(Number(first.rows[0].amount)).toBe(13);
+
+    const seen = [...first.rows];
+    let cursor: string | null = first.next_cursor;
+    while (cursor) {
+      const page = await readJson(await GET(makeRequest(`${base}&limit=2&cursor=${encodeURIComponent(cursor)}`)));
+      // Totals are sent with the first page only.
+      expect(page.total_count).toBeUndefined();
+      seen.push(...page.rows);
+      cursor = page.next_cursor;
+    }
+    const keys = seen.map((row: { payment_id: number; charge_id: number }) => `${row.payment_id}-${row.charge_id}`);
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(keys).toEqual(all.map((row: { payment_id: number; charge_id: number }) => `${row.payment_id}-${row.charge_id}`));
   });
 });
 
@@ -333,7 +379,7 @@ describe("DELETE /api/learners/payments (delete a charge)", () => {
     const deleteResponse = await DELETE(makeRequest(`http://localhost/api/learners/payments?charge_id=${chargeId}`, { method: "DELETE" }));
     expect(deleteResponse.status).toBe(201);
 
-    const getResponse = await GET(makeRequest(`http://localhost/api/learners/payments?learner_id=${learnerId}`));
+    const getResponse = await GET(makeRequest(`http://localhost/api/learners/payments?school_id=${SCHOOL}&learner_id=${learnerId}`));
     const rows = await readJson(getResponse);
     expect(rows.some((row: { charge_id: number }) => row.charge_id === chargeId)).toBe(false);
 
@@ -386,7 +432,7 @@ describe("Soft-deleted learners are excluded from payments/balances (regression)
     const learnerGet = await GET_LEARNERS(makeRequest(`http://localhost/api/learners?learner_id=${softDeleteLearner.learner_id}`));
     expect(await readJson(learnerGet)).toEqual([]);
 
-    const paymentsGet = await GET(makeRequest(`http://localhost/api/learners/payments?learner_id=${softDeleteLearner.learner_id}`));
+    const paymentsGet = await GET(makeRequest(`http://localhost/api/learners/payments?school_id=${SCHOOL}&learner_id=${softDeleteLearner.learner_id}`));
     expect(await readJson(paymentsGet)).toEqual([]);
 
     const balancesGet = await GET_BALANCES(makeRequest(`http://localhost/api/learners/balances?school_id=${SCHOOL}&learner_id=${softDeleteLearner.learner_id}`));

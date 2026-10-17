@@ -67,7 +67,7 @@ describe("migrations — fresh database", () => {
     });
     // Asserted in order and in full: a migration that stops being applied,
     // or one that lands out of sequence, is exactly the failure this catches.
-    expect(applied.map((m) => m.name)).toEqual(["001_initial_schema", "002_school_logos", "003_employees", "004_roles", "005_income_category_applicability", "006_auth_and_audit", "007_documents", "008_payroll"]);
+    expect(applied.map((m) => m.name)).toEqual(["001_initial_schema", "002_school_logos", "003_employees", "004_roles", "005_income_category_applicability", "006_auth_and_audit", "007_documents", "008_payroll", "009_performance_indexes"]);
   });
 
   it("creates every table the application code depends on", async () => {
@@ -247,6 +247,34 @@ describe("migrations — fresh database", () => {
     );
     expect(Number(remaining.rows[0].total)).toBe(0);
     await pool.end();
+  });
+
+  it("indexes the foreign keys and sort columns the payment/expense lists depend on (009)", async () => {
+    const pool = new Pool(testDbConfig());
+    const result = await pool.query("SELECT indexname FROM pg_indexes WHERE schemaname = 'public'");
+    await pool.end();
+    expect(result.rows.map((r) => r.indexname)).toEqual(expect.arrayContaining([
+      "idx_learners_school_live",
+      "idx_charges_learner_fee_period",
+      "idx_charges_enrolment",
+      "idx_charges_income_category",
+      "idx_payment_allocations_charge",
+      "idx_payments_paid_at",
+      "idx_expenses_category_date",
+      "idx_expenses_date",
+      "idx_enrolments_year_class",
+    ]));
+  });
+
+  it("rolls 009 back cleanly and re-applies it", async () => {
+    const down = await runner({ databaseUrl: testDbConfig(), dir: migrationsDir, direction: "down", count: 1, migrationsTable: "pgmigrations", log: () => {} });
+    expect(down.map((m) => m.name)).toEqual(["009_performance_indexes"]);
+    const pool = new Pool(testDbConfig());
+    const left = await pool.query("SELECT count(*) AS total FROM pg_indexes WHERE indexname = 'idx_payments_paid_at'");
+    await pool.end();
+    expect(Number(left.rows[0].total)).toBe(0);
+    const up = await runner({ databaseUrl: testDbConfig(), dir: migrationsDir, direction: "up", migrationsTable: "pgmigrations", log: () => {} });
+    expect(up.map((m) => m.name)).toEqual(["009_performance_indexes"]);
   });
 
   it("running migrations again is a no-op (idempotent)", async () => {

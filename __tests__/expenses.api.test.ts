@@ -230,6 +230,47 @@ describe("GET /api/schools/[school_id]/expenses (retrieve)", () => {
   });
 });
 
+describe("GET /api/schools/[school_id]/expenses?limit= (paged)", () => {
+  it("pages newest-first with no gaps or repeats (including same-day ties), and totals cover every expense", async () => {
+    // Two on the same day exercise the expense_id tie-break in the cursor.
+    await POST(
+      makeRequest(`http://localhost/api/schools/${SCHOOL_A}/expenses`, {
+        method: "POST",
+        body: JSON.stringify([
+          { expense_category_id: String(categoryA), amount: 5, expense_date: "2026-09-01", description: "page 1" },
+          { expense_category_id: String(categoryA), amount: 6, expense_date: "2026-09-01", description: "page 2" },
+          { expense_category_id: String(categoryA), amount: 7, expense_date: "2026-09-02", description: "page 3" },
+        ]),
+      })
+    );
+
+    const base = `http://localhost/api/schools/${SCHOOL_A}/expenses`;
+    const all = await readJson(await GET(makeRequest(base), makeParams(SCHOOL_A)));
+    const expectedTotal = all.reduce((sum: number, row: { amount: string }) => sum + Number(row.amount), 0);
+
+    const first = await readJson(await GET(makeRequest(`${base}?limit=2`), makeParams(SCHOOL_A)));
+    expect(first.rows).toHaveLength(2);
+    expect(first.total_count).toBe(all.length);
+    expect(Number(first.total_amount)).toBe(expectedTotal);
+    expect(first.rows[0].description).toBe("page 3");
+
+    const seen = [...first.rows];
+    let cursor: string | null = first.next_cursor;
+    while (cursor) {
+      const page = await readJson(await GET(makeRequest(`${base}?limit=2&cursor=${encodeURIComponent(cursor)}`), makeParams(SCHOOL_A)));
+      expect(page.total_count).toBeUndefined();
+      seen.push(...page.rows);
+      cursor = page.next_cursor;
+    }
+    expect(seen.map((row: { expense_id: number }) => row.expense_id)).toEqual(all.map((row: { expense_id: number }) => row.expense_id));
+  });
+
+  it("returns an empty page with zero totals for a school with no expenses", async () => {
+    const body = await readJson(await GET(makeRequest(`http://localhost/api/schools/ZZZZ/expenses?limit=50`), makeParams("ZZZZ")));
+    expect(body).toEqual({ rows: [], next_cursor: null, total_count: 0, total_amount: "0" });
+  });
+});
+
 describe("GET /api/schools/[school_id]/expenses?format=pdf (export)", () => {
   it("returns a valid PDF for the expenses table", async () => {
     const response = await GET(makeRequest(`http://localhost/api/schools/${SCHOOL_A}/expenses?format=pdf`), makeParams(SCHOOL_A));

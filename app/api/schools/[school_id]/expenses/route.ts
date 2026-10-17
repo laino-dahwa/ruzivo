@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import {getExpense} from "../../../../../repositories/school/read/getExpense"
+import {getExpense, getExpensePage} from "../../../../../repositories/school/read/getExpense"
+import { parseLimit } from "../../../../../lib/pagination"
 import { createExpense } from "@/repositories/school/create/createExpense";
 import { deleteExpense } from "@/repositories/school/delete/deleteExpense";
 import { normalizeToArray, validationErrorBody } from "../../../../../lib/validation/bulk";
@@ -19,8 +20,17 @@ type Params= {
 
 export async function GET(request:Request,{ params }:Params) {
     const { school_id } = await params;
-    const response = await getExpense(school_id)
     const { searchParams } = new URL(request.url)
+
+    // `?limit=` asks for one page plus totals (the Expenses page); without
+    // it, every expense is returned (PDF export, older callers).
+    const limit = parseLimit(searchParams)
+    if (limit !== null && !isPdfFormat(searchParams)) {
+        const cursor = searchParams.get("cursor")
+        return NextResponse.json(await getExpensePage(school_id, limit, cursor))
+    }
+
+    const response = await getExpense(school_id)
 
     if (isPdfFormat(searchParams)) {
         // The table shows category names, not ids, so the export resolves

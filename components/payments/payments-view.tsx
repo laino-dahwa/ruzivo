@@ -14,6 +14,7 @@ import { balancesApi, paymentsApi } from '../../services/payments';
 import { learnersApi } from '../../services/learners';
 import { schoolLogoUrl } from '../../services/logo';
 import { printHtml } from '../../services/print';
+import { PagedListFooter, usePagedList } from '../shared/paged-list';
 import type { CreateChargesWithPaymentsInput, Payment } from '../../types/payment';
 import { useSchoolReferenceData } from '../reference-data/use-school-reference-data';
 import { LearnerAutocomplete } from '../learners/learner-autocomplete';
@@ -154,17 +155,22 @@ export function PaymentsView() {
     0,
   );
 
-  const paymentsQuery = useQuery({
-    queryKey: ['payments', filters],
-    queryFn: () => paymentsApi.list({
-      learner_id: filters.learner_id || null,
-      class_name: filters.class_name || null,
-      gender_name: filters.gender_name || null,
-      academic_year: filters.academic_year || null,
-      income_name: filters.income_name || null,
-      payment_period: filters.payment_period || null,
-      method_name: filters.method_name || null,
-    }),
+  // The table and the PDF export share these, so both always match.
+  const activeFilters = {
+    learner_id: filters.learner_id || null,
+    class_name: filters.class_name || null,
+    gender_name: filters.gender_name || null,
+    academic_year: filters.academic_year || null,
+    income_name: filters.income_name || null,
+    payment_period: filters.payment_period || null,
+    method_name: filters.method_name || null,
+  };
+
+  // Newest first, one page at a time — see components/shared/paged-list.tsx.
+  const { query: paymentsQuery, rows: payments, totalCount: paymentsCount, totalAmount: paymentsTotal } = usePagedList({
+    queryKey: ['payments', schoolId, filters],
+    fetchPage: (cursor) => paymentsApi.listPage(schoolId!, activeFilters, cursor),
+    enabled: !!schoolId,
   });
 
   // What each learner has already paid, per fee and period. Reuses the same
@@ -693,15 +699,7 @@ export function PaymentsView() {
               <div className="flex items-end">
                 <DownloadPdfButton
                   disabled={paymentsQuery.isLoading}
-                  onDownload={() => paymentsApi.downloadPdf({
-                    learner_id: filters.learner_id || null,
-                    class_name: filters.class_name || null,
-                    gender_name: filters.gender_name || null,
-                    academic_year: filters.academic_year || null,
-                    income_name: filters.income_name || null,
-                    payment_period: filters.payment_period || null,
-                    method_name: filters.method_name || null,
-                  })}
+                  onDownload={() => paymentsApi.downloadPdf(schoolId, activeFilters)}
                 />
               </div>
             </div>
@@ -713,9 +711,9 @@ export function PaymentsView() {
                 </thead>
                 <tbody className="divide-y divide-border/60">
                   {paymentsQuery.isLoading && <tr><td className="px-3 py-3 text-muted-foreground" colSpan={6}>Loading…</td></tr>}
-                  {!paymentsQuery.isLoading && (paymentsQuery.data?.length ?? 0) === 0 && <tr><td className="px-3 py-3 text-muted-foreground" colSpan={6}>No payments found</td></tr>}
-                  {paymentsQuery.data?.map((payment, index) => (
-                    <tr key={index}>
+                  {!paymentsQuery.isLoading && payments.length === 0 && <tr><td className="px-3 py-3 text-muted-foreground" colSpan={6}>No payments found</td></tr>}
+                  {payments.map((payment) => (
+                    <tr key={`${payment.payment_id}-${payment.charge_id}`}>
                       <td className="px-3 py-2">{payment.first_name} {payment.last_name}</td>
                       <td className="px-3 py-2">{payment.income_name}</td>
                       <td className="px-3 py-2">{payment.period_name}</td>
@@ -750,6 +748,16 @@ export function PaymentsView() {
               </table>
               <ErrorNotice error={paymentsQuery.error} />
             </div>
+            <PagedListFooter
+              shown={payments.length}
+              totalCount={paymentsCount}
+              totalAmount={paymentsTotal}
+              noun="payments"
+              hasMore={!!paymentsQuery.hasNextPage}
+              loadingMore={paymentsQuery.isFetchingNextPage}
+              onLoadMore={() => paymentsQuery.fetchNextPage()}
+              testId="payments-list"
+            />
             <ErrorNotice error={deleteCharge.error} />
           </div>
         </>
