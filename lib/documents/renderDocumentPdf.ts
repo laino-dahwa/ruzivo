@@ -18,6 +18,23 @@ export type StatementData = {
   totalBalance: string;
 };
 
+export type InvoiceLine = {
+  income_category_id: number;
+  income_name: string;
+  payment_period_id: number | null;
+  /** Empty when the line is not for a particular period. */
+  period_name: string;
+  /** Plain decimal, e.g. "120.00" — kept for the record alongside the printed label. */
+  amount: string;
+  amount_label: string;
+};
+
+export type InvoiceData = {
+  lines: InvoiceLine[];
+  total: string;
+  totalLabel: string;
+};
+
 export type DocumentPdfOptions = {
   schoolName: string;
   schoolAddress?: string | null;
@@ -35,6 +52,10 @@ export type DocumentPdfOptions = {
   bodyHtml: string;
   /** Present only for a statement of account; drawn as a locked table. */
   statement?: StatementData | null;
+  /** Present only for an invoice; drawn as an items table with the total due. */
+  invoice?: InvoiceData | null;
+  /** How the reference is labelled in the title block — "Ref" unless set. */
+  referenceLabel?: string;
   signatoryName: string;
   signatoryTitle: string;
 };
@@ -277,7 +298,7 @@ function drawTitleBlock(doc: Doc, options: DocumentPdfOptions) {
   doc.moveDown(0.4);
 
   doc.font("Helvetica").fontSize(9).fillColor("#555");
-  doc.text(`Ref: ${options.reference}`, left, doc.y, { width, align: "left", continued: true });
+  doc.text(`${options.referenceLabel ?? "Ref"}: ${options.reference}`, left, doc.y, { width, align: "left", continued: true });
   doc.text(options.issuedAtLabel, { width, align: "right" });
 
   if (options.learnerLine) {
@@ -397,6 +418,70 @@ function drawStatement(doc: Doc, statement: StatementData) {
 }
 
 /**
+ * The invoice's items, drawn as a table rather than as editable text, with
+ * the total due beneath. The amounts and names are the ones stored when the
+ * invoice was issued (lib/documents/invoice.ts), so a reprint matches the
+ * original even after a fee is renamed or its limit changes.
+ */
+function drawInvoice(doc: Doc, invoice: InvoiceData) {
+  const left = doc.page.margins.left;
+  const width = contentWidth(doc);
+  const columns = [
+    { key: "number" as const, label: "#", width: width * 0.07, align: "left" as const },
+    { key: "income_name" as const, label: "Item", width: width * 0.48, align: "left" as const },
+    { key: "period_name" as const, label: "Period", width: width * 0.23, align: "left" as const },
+    { key: "amount_label" as const, label: "Amount", width: width * 0.22, align: "right" as const },
+  ];
+
+  ensureSpace(doc, 120);
+  doc.moveDown(0.4);
+
+  const headerY = doc.y;
+  doc.rect(left, headerY - 2, width, 18).fillColor("#eeeeee").fill();
+  doc.fillColor("#000").font("Helvetica-Bold").fontSize(9);
+
+  let x = left;
+  for (const column of columns) {
+    doc.text(column.label, x + 4, headerY + 3, { width: column.width - 8, align: column.align });
+    x += column.width;
+  }
+  doc.y = headerY + 20;
+
+  doc.font("Helvetica").fontSize(9.5);
+  invoice.lines.forEach((line, index) => {
+    ensureSpace(doc, 40);
+    const rowY = doc.y;
+    const cells: Record<string, string> = {
+      number: String(index + 1),
+      income_name: line.income_name,
+      period_name: line.period_name,
+      amount_label: line.amount_label,
+    };
+    x = left;
+    let rowBottom = rowY;
+    for (const column of columns) {
+      doc.fillColor("#000").text(cells[column.key] ?? "", x + 4, rowY, { width: column.width - 8, align: column.align });
+      rowBottom = Math.max(rowBottom, doc.y);
+      x += column.width;
+    }
+    // A long fee name can wrap; the next row starts below the tallest cell.
+    doc.y = Math.max(rowY + 15, rowBottom + 3);
+    doc.moveTo(left, doc.y - 3).lineTo(left + width, doc.y - 3).lineWidth(0.4).strokeColor("#cccccc").stroke();
+  });
+
+  ensureSpace(doc, 40);
+  const totalY = doc.y + 2;
+  const totalLeft = left + columns[0].width + columns[1].width;
+  doc.moveTo(totalLeft, totalY).lineTo(left + width, totalY).lineWidth(1).strokeColor("#000").stroke();
+  doc.font("Helvetica-Bold").fontSize(11).fillColor("#000");
+  doc.text("TOTAL DUE", totalLeft + 4, totalY + 6, { width: columns[2].width - 8, align: "left" });
+  doc.text(invoice.totalLabel, totalLeft + columns[2].width + 4, totalY + 6, { width: columns[3].width - 8, align: "right" });
+
+  doc.y = totalY + 26;
+  doc.moveDown(1);
+}
+
+/**
  * The school seal, drawn rather than uploaded.
  *
  * There is no stored signature or stamp image anywhere in this app — an
@@ -512,6 +597,10 @@ export function renderDocumentPdf(options: DocumentPdfOptions): Promise<Buffer> 
 
       if (options.statement) {
         drawStatement(doc, options.statement);
+      }
+
+      if (options.invoice) {
+        drawInvoice(doc, options.invoice);
       }
 
       drawSignature(doc, options);

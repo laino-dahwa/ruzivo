@@ -53,7 +53,19 @@ An administrator resets it in **School setup → Employees**, with the key icon 
 - requires them to choose their own password again when they next sign in;
 - records who reset whose password in the audit log (never the password itself).
 
-The key icon is not shown on your own row: change your own password from the user menu with **Change password**, which asks for the current one. If the only administrator has forgotten their password, use the break-glass steps below.
+The key icon is not shown on your own row: change your own password from the user menu with **Change password**, which asks for the current one.
+
+## Security keys: resetting your own forgotten password
+
+Each account can hold one **security key** — 24 characters such as `7KQ4-M9XD-2HTP-WC8N-R3VF-JY6A` — which lets its owner set a new password from the sign-in screen without an administrator.
+
+- **The first administrator gets one at setup**, shown once on the setup screen. This is what covers "the only administrator forgot their password".
+- **Anyone can make or replace theirs** from the user menu → **Security key**, after confirming their current password. Making a new one cancels the old one. (Not available while a temporary password is still in force.)
+- **To use it**, choose **Use your security key** on the sign-in screen and enter your email, the key and a new password. You are signed in, every other session ends, and any lockout is cleared.
+- **A key works once.** Using it replaces it with a new key, shown once — save that one too.
+- It is stored only as a hash, like a password, and cannot be shown again. Wrong keys count towards the same 5-attempt lockout as wrong passwords, and every attempt is in the audit log.
+
+Anyone holding your email and your key can take over your account, so keep it on paper somewhere private rather than next to the computer. If the only administrator has lost both their password and their key, use the break-glass steps below.
 
 ## Sessions
 

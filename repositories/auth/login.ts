@@ -11,6 +11,8 @@ export type LoginCandidate = {
   access_level: string;
   locked_until: Date | null;
   failed_login_count: number;
+  /** Null when the account has no security key (repositories/auth/securityKey.ts). */
+  security_key_hash: string | null;
 };
 
 /**
@@ -36,6 +38,7 @@ export async function findEmployeeForLogin(email: string): Promise<LoginCandidat
       e.must_change_password,
       e.failed_login_count,
       e.locked_until,
+      e.security_key_hash,
       r.access_level
     FROM employees e
     JOIN roles r ON r.role_id = e.role_id

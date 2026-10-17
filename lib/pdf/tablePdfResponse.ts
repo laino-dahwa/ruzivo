@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { generateReportPdf, type PdfColumn } from "./generateReportPdf";
 import { formatDateLabel } from "../reportRequest";
+import { localDateKey } from "../dates";
 
 export type TablePdfOptions = {
     /** Shown as the document heading, e.g. "Learners List". */
@@ -22,7 +23,7 @@ export type TablePdfOptions = {
  * output in the app comes from one implementation with one look.
  */
 export async function tablePdfResponse(options: TablePdfOptions): Promise<NextResponse> {
-    const generatedOn = new Date().toISOString().slice(0, 10);
+    const generatedOn = localDateKey();
 
     const pdf = await generateReportPdf({
         appName: "SSV Admin",

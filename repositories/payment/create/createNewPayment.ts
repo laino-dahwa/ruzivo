@@ -71,6 +71,11 @@ async function assertLearnersActive(client: PoolClient, inputs: CreateChargesWit
  * academic year — which is exactly how getBalances/getOwingReport already
  * compute "charged" vs "paid". Enforcement uses the same key so the limit
  * being enforced is the same number the balance screens display.
+ *
+ * A ONCE_OFF fee uses the same key — it is paid once in each of the periods
+ * it was set up for — with two extra rules in assertWithinLimits: it can only
+ * be paid in those periods, and with no limit set it can be paid one time
+ * per period.
  */
 type LimitKey = {
   learner_id: string;
@@ -122,10 +127,13 @@ async function existingPaidFor(client: PoolClient, key: LimitKey): Promise<numbe
   return Number(result.rows[0]?.paid ?? 0);
 }
 
-/** null means no limit is configured for this fee, so nothing is enforced. */
-async function limitFor(client: PoolClient, income_category_id: number): Promise<{ limit: number | null; income_name: string }> {
+/** `limit` null means no limit is configured for this fee. */
+async function limitFor(
+  client: PoolClient,
+  income_category_id: number
+): Promise<{ limit: number | null; income_name: string; onceOff: boolean }> {
   const result = await client.query(
-    `SELECT income_name, income_limit FROM income_categories WHERE income_category_id = $1`,
+    `SELECT income_name, income_limit, priority FROM income_categories WHERE income_category_id = $1`,
     [income_category_id]
   );
 
@@ -133,7 +141,59 @@ async function limitFor(client: PoolClient, income_category_id: number): Promise
   return {
     limit: row?.income_limit === null || row?.income_limit === undefined ? null : Number(row.income_limit),
     income_name: row?.income_name ?? "this fee",
+    onceOff: row?.priority === "ONCE_OFF",
   };
+}
+
+/**
+ * The periods a once-off fee was set up for, by name. A once-off fee always
+ * has at least one (repositories/school/create/createIncomeCategory.ts).
+ */
+async function onceOffPeriodsFor(client: PoolClient, income_category_id: number): Promise<{ ids: Set<number>; names: string[] }> {
+  const result = await client.query(
+    `
+    SELECT pp.payment_period_id::int AS id, pp.period_name
+    FROM income_category_periods icp
+    JOIN payment_periods pp ON pp.payment_period_id = icp.payment_period_id
+    WHERE icp.income_category_id = $1
+    ORDER BY pp.payment_period_id
+    `,
+    [income_category_id]
+  );
+  return {
+    ids: new Set(result.rows.map((row) => Number(row.id))),
+    names: result.rows.map((row) => String(row.period_name)),
+  };
+}
+
+/**
+ * Whether a once-off fee applies to this learner: everyone, the learner's
+ * class (as enrolled for this payment), or the learner by name. Once-off fees
+ * are never projected as owed, so this is the one place their "Applies to"
+ * takes effect.
+ */
+async function onceOffAppliesTo(client: PoolClient, income_category_id: number, input: CreateChargesWithPaymentsInput): Promise<boolean> {
+  const result = await client.query(
+    `
+    SELECT CASE ic.class_applicability
+      WHEN 'ALL_LEARNERS' THEN TRUE
+      WHEN 'SPECIFIC_CLASSES' THEN EXISTS (
+        SELECT 1 FROM income_category_classes icc
+        JOIN enrolments e ON e.class_category_id = icc.class_category_id
+        WHERE icc.income_category_id = ic.income_category_id AND e.enrolment_id = $2
+      )
+      WHEN 'SPECIFIC_LEARNERS' THEN EXISTS (
+        SELECT 1 FROM income_category_learners icl
+        WHERE icl.income_category_id = ic.income_category_id AND icl.learner_id = $3
+      )
+      ELSE FALSE
+    END AS applies
+    FROM income_categories ic
+    WHERE ic.income_category_id = $1
+    `,
+    [income_category_id, input.enrolment_id, input.learner_id]
+  );
+  return result.rows[0]?.applies === true;
 }
 
 async function periodNameFor(client: PoolClient, payment_period_id: number): Promise<string> {
@@ -160,6 +220,7 @@ async function assertWithinLimits(client: PoolClient, inputs: CreateChargesWithP
 
   for (const [index, input] of inputs.entries()) {
     for (const line of input.income_categories) {
+      const { limit, income_name, onceOff } = await limitFor(client, line.income_category_id);
       const key = limitKeyOf(input, line.income_category_id);
       const id = keyString(key);
 
@@ -168,15 +229,51 @@ async function assertWithinLimits(client: PoolClient, inputs: CreateChargesWithP
         alreadyLocked.add(id);
       }
 
-      const { limit, income_name } = await limitFor(client, line.income_category_id);
+      const amount = Number(line.amount);
+      const periodName = await periodNameFor(client, input.payment_period_id);
+
+      if (onceOff) {
+        // A once-off fee belongs to the periods it was set up for, and is
+        // paid in those only.
+        const allowed = await onceOffPeriodsFor(client, line.income_category_id);
+        if (!allowed.ids.has(Number(input.payment_period_id))) {
+          violations.push({
+            index,
+            field: "payment_period_id",
+            message: `${income_name} is a once-off payment for ${allowed.names.join(", ") || "its own periods"} only — it cannot be paid for ${periodName}.`,
+          });
+          continue;
+        }
+        if (!(await onceOffAppliesTo(client, line.income_category_id, input))) {
+          violations.push({
+            index,
+            field: "income_category_id",
+            message: `${income_name} does not apply to this learner.`,
+          });
+          continue;
+        }
+      }
+
       if (limit === null) {
-        continue; // No limit configured for this fee — nothing to enforce.
+        // No limit configured. A regular fee then has nothing to enforce; a
+        // once-off fee with no set amount is still paid one time per period.
+        if (onceOff) {
+          const paidAlready = (await existingPaidFor(client, key)) + (pending.get(id) ?? 0);
+          if (paidAlready > 0) {
+            violations.push({
+              index,
+              field: "amount",
+              message: `Payment cannot be processed. ${income_name} is a once-off payment and the learner has already paid it for ${periodName}.`,
+            });
+            continue;
+          }
+          pending.set(id, amount);
+        }
+        continue;
       }
 
       const paidSoFar = (await existingPaidFor(client, key)) + (pending.get(id) ?? 0);
       const remaining = limit - paidSoFar;
-      const amount = Number(line.amount);
-      const periodName = await periodNameFor(client, key.payment_period_id);
 
       if (remaining <= 0) {
         violations.push({

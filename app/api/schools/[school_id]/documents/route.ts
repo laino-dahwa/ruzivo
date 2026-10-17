@@ -4,6 +4,7 @@ import { actorLabel } from "../../../../../lib/auth/session";
 import { createDocument, DocumentInputError } from "../../../../../repositories/document/createDocument";
 import { listDocuments } from "../../../../../repositories/document/readDocuments";
 import { buildStatementFor } from "../../../../../lib/documents/statement";
+import { buildInvoice, InvoiceInputError, parseInvoiceLines } from "../../../../../lib/documents/invoice";
 import { templateFor } from "../../../../../lib/documents/templates";
 
 export const runtime = "nodejs";
@@ -73,6 +74,13 @@ export async function POST(request: Request, { params }: Params) {
 
     const statement = template.includesStatement && learner_id ? await buildStatementFor(scope.school_id, learner_id) : null;
 
+    // The amounts are the user's (a fee's default limit can be changed for
+    // one invoice), but the fee and period names and the total are worked
+    // out here from the school's own records.
+    const invoice = template.includesInvoice
+      ? await buildInvoice(scope.school_id, parseInvoiceLines(body?.invoice_lines))
+      : null;
+
     const created = await createDocument({
       school_id: scope.school_id,
       learner_id,
@@ -80,6 +88,7 @@ export async function POST(request: Request, { params }: Params) {
       title,
       body_html,
       statement,
+      invoice,
       signatory_name,
       signatory_title,
       issued_by_employee_id: auth.actor.employee_id,
@@ -88,7 +97,7 @@ export async function POST(request: Request, { params }: Params) {
 
     return NextResponse.json(created, { status: 201 });
   } catch (error) {
-    if (error instanceof DocumentInputError) {
+    if (error instanceof DocumentInputError || error instanceof InvoiceInputError) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 

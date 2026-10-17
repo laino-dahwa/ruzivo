@@ -3,8 +3,10 @@ import { requireAuth, resolveSchoolScope } from "../../../../../../lib/auth/guar
 import { getDocument } from "../../../../../../repositories/document/readDocuments";
 import { getschool } from "../../../../../../repositories/school/read/getSchool";
 import { getSchoolLogo } from "../../../../../../repositories/school/logo/schoolLogo";
+import { templateFor } from "../../../../../../lib/documents/templates";
 import { renderDocumentPdf } from "../../../../../../lib/documents/renderDocumentPdf";
 import { formatDateLabel } from "../../../../../../lib/reportRequest";
+import { localDateKey } from "../../../../../../lib/dates";
 
 export const runtime = "nodejs";
 
@@ -50,13 +52,15 @@ export async function GET(request: Request, { params }: Params) {
       title: document.title,
       reference: document.reference,
       issuedAt,
-      issuedAtLabel: formatDateLabel(issuedAt.toISOString().slice(0, 10)),
+      issuedAtLabel: formatDateLabel(localDateKey(issuedAt)),
       issuedByLabel: document.issued_by_label,
       learnerLine: document.learner_name
         ? `${document.learner_name}${document.class_name ? ` — ${document.class_name}` : ""} (${document.learner_id})`
         : null,
       bodyHtml: document.body_html,
       statement: document.statement_data ?? null,
+      invoice: document.invoice_data ?? null,
+      referenceLabel: templateFor(document.document_type)?.referenceLabel,
       signatoryName: document.signatory_name,
       signatoryTitle: document.signatory_title,
     });

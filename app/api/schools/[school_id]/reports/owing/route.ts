@@ -6,6 +6,7 @@ import { generateReportPdf } from "../../../../../../lib/pdf/generateReportPdf";
 import { formatCurrency } from "../../../../../../lib/currency";
 import { parseReportDate, parseReportScope, formatDateLabel, isPdfFormat } from "../../../../../../lib/reportRequest";
 import { reportScopeLabel } from "../../../../../../lib/reports/scopeLabel";
+import { localDateKey } from "../../../../../../lib/dates";
 
 export const runtime = "nodejs";
 
@@ -39,7 +40,7 @@ export async function GET(request: Request, { params }: Params) {
                 logo: logo?.data ?? null,
                 reportTitle: "Owing / Outstanding Report",
                 dateLabel: await reportScopeLabel(school_id, scope!),
-                generatedAtLabel: formatDateLabel(new Date().toISOString().slice(0, 10)),
+                generatedAtLabel: formatDateLabel(localDateKey()),
                 columns: [
                     { key: "learner", label: "Student", width: 115 },
                     { key: "account", label: "Account", width: 55 },

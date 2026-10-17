@@ -6,6 +6,7 @@ import { getSchoolLogo } from "../../../../../../../repositories/school/logo/sch
 import { renderPayslipsPdf } from "../../../../../../../lib/payroll/renderPayslipsPdf";
 import { periodLabel } from "../../../../../../../lib/payroll/compute";
 import { formatDateLabel } from "../../../../../../../lib/reportRequest";
+import { localDateKey } from "../../../../../../../lib/dates";
 
 export const runtime = "nodejs";
 
@@ -43,7 +44,7 @@ export async function GET(request: Request, { params }: Params) {
       periodYear: run.period_year,
       periodMonth: run.period_month,
       generatedAt,
-      generatedAtLabel: formatDateLabel(generatedAt.toISOString().slice(0, 10)),
+      generatedAtLabel: formatDateLabel(localDateKey(generatedAt)),
       generatedByLabel: run.generated_by_label,
       lines: run.lines,
     });

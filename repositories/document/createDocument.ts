@@ -1,7 +1,7 @@
 import { transaction } from "../../lib/db";
 import { formatReference, templateFor } from "../../lib/documents/templates";
 import { logAuditWithin } from "../audit/writeAuditLog";
-import type { StatementData } from "../../lib/documents/renderDocumentPdf";
+import type { InvoiceData, StatementData } from "../../lib/documents/renderDocumentPdf";
 
 export class DocumentInputError extends Error {
   constructor(message: string) {
@@ -17,6 +17,8 @@ export type CreateDocumentInput = {
   title: string;
   body_html: string;
   statement: StatementData | null;
+  /** Required for an invoice, null for everything else. */
+  invoice?: InvoiceData | null;
   signatory_name: string;
   signatory_title: string;
   issued_by_employee_id: number | null;
@@ -41,6 +43,10 @@ export async function createDocument(input: CreateDocumentInput) {
     throw new DocumentInputError(`A ${template.label.toLowerCase()} must be issued for a learner.`);
   }
 
+  if (template.includesInvoice && !input.invoice?.lines.length) {
+    throw new DocumentInputError("Add at least one income stream to the invoice.");
+  }
+
   if (!input.body_html.trim()) {
     throw new DocumentInputError("The document is empty.");
   }
@@ -54,9 +60,9 @@ export async function createDocument(input: CreateDocumentInput) {
       INSERT INTO documents (
         school_id, learner_id, document_type, title, reference, body_html,
         statement_data, signatory_name, signatory_title,
-        issued_by_employee_id, issued_by_label
+        issued_by_employee_id, issued_by_label, invoice_data
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11)
+      VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12::jsonb)
       RETURNING document_id::int AS document_id, reference, issued_at
       `,
       [
@@ -71,6 +77,7 @@ export async function createDocument(input: CreateDocumentInput) {
         input.signatory_title,
         input.issued_by_employee_id,
         input.issued_by_label,
+        input.invoice ? JSON.stringify(input.invoice) : null,
       ]
     );
 

@@ -36,6 +36,8 @@ let query: (text: string, params?: unknown[]) => Promise<{ rows: Record<string, 
 let adminToken = "";
 let cashierToken = "";
 let learnerId = "";
+let feeId = 0;
+let periodId = 0;
 
 function request(url: string, init?: RequestInit & { token?: string }) {
   const headers = new Headers(init?.headers);
@@ -122,6 +124,8 @@ beforeAll(async () => {
     academic_year_id: year.academic_year_id,
   }]);
   learnerId = learner.learner_id;
+  feeId = Number(fee.income_category_id);
+  periodId = Number(period.payment_period_id);
 
   const enrolment = await query(`SELECT enrolment_id FROM enrolments WHERE learner_id = $1`, [learnerId]);
   await createChargesWithPayments({
@@ -261,6 +265,95 @@ describe("statement of account", () => {
     expect(stored.totalPaid).toContain("200");
     expect(stored.totalBalance).toContain("300");
     expect(stored.lines).toHaveLength(1);
+  });
+});
+
+describe("invoice", () => {
+  function invoice(lines: unknown, overrides: Record<string, unknown> = {}) {
+    return letter({ document_type: "invoice", title: "Invoice", invoice_lines: lines, ...overrides });
+  }
+
+  async function issue(body: unknown) {
+    return POST_DOCUMENTS(post(DOCUMENTS_URL, body, adminToken), params({ school_id: SCHOOL }));
+  }
+
+  it("stores the chosen income streams with edited amounts, and names and totals them from the records", async () => {
+    const { createIncomeCategory } = await import("../repositories/school/create/createIncomeCategory");
+    const [uniform] = await createIncomeCategory([{ school_id: SCHOOL, income_name: "Uniform", income_limit: "80" }]);
+
+    const response = await issue(
+      invoice([
+        // School Fees' default limit is 500; edited down to 450 for this invoice.
+        { income_category_id: feeId, payment_period_id: periodId, amount: 450, income_name: "Forged name" },
+        { income_category_id: Number(uniform.income_category_id), payment_period_id: null, amount: 80.555 },
+      ])
+    );
+    expect(response.status).toBe(201);
+    const created = await response.json();
+    expect(created.reference).toMatch(/^DOC-IN-\d{6}$/);
+
+    const row = await query(`SELECT invoice_data, statement_data FROM documents WHERE document_id = $1`, [created.document_id]);
+    const stored = row.rows[0].invoice_data as unknown as {
+      lines: { income_name: string; period_name: string; amount: string }[];
+      total: string;
+      totalLabel: string;
+    };
+    expect(row.rows[0].statement_data).toBeNull();
+    // Names come from the school's records, not from the request.
+    expect(stored.lines.map((line) => line.income_name)).toEqual(["School Fees", "Uniform"]);
+    expect(stored.lines[0].period_name).toBe("January");
+    expect(stored.lines[1].period_name).toBe("");
+    // The edited amount is kept; cents are rounded once; the total is exact.
+    expect(stored.lines.map((line) => line.amount)).toEqual(["450.00", "80.56"]);
+    expect(stored.total).toBe("530.56");
+    expect(stored.totalLabel).toContain("530.56");
+
+    // The fee's own default limit is untouched.
+    const fee = await query(`SELECT income_limit FROM income_categories WHERE income_category_id = $1`, [feeId]);
+    expect(Number(fee.rows[0].income_limit)).toBe(500);
+  });
+
+  it("refuses an invoice with no items, or an item with no positive amount", async () => {
+    expect((await issue(invoice([]))).status).toBe(400);
+    expect((await issue(invoice(undefined))).status).toBe(400);
+    const zero = await issue(invoice([{ income_category_id: feeId, payment_period_id: null, amount: 0 }]));
+    expect(zero.status).toBe(400);
+    expect((await zero.json()).error).toMatch(/greater than zero/i);
+  });
+
+  it("refuses an income stream or period that belongs to another school", async () => {
+    await query(`INSERT INTO schools (school_id, school_name) VALUES ('DO3', 'Invoice Other School')`);
+    const { createIncomeCategory } = await import("../repositories/school/create/createIncomeCategory");
+    const { createPaymentPeriod } = await import("../repositories/school/create/createPaymentPeriod");
+    const [foreignFee] = await createIncomeCategory([{ school_id: "DO3", income_name: "Foreign Fee", income_limit: "10" }]);
+    const [foreignPeriod] = await createPaymentPeriod([{ school_id: "DO3", period_name: "Foreign Term" }]);
+
+    const byFee = await issue(invoice([{ income_category_id: Number(foreignFee.income_category_id), payment_period_id: null, amount: 10 }]));
+    expect(byFee.status).toBe(400);
+    expect((await byFee.json()).error).toMatch(/does not belong to this school/i);
+
+    const byPeriod = await issue(invoice([{ income_category_id: feeId, payment_period_id: Number(foreignPeriod.payment_period_id), amount: 10 }]));
+    expect(byPeriod.status).toBe(400);
+  });
+
+  it("refuses an invoice with no learner", async () => {
+    const response = await issue(invoice([{ income_category_id: feeId, payment_period_id: null, amount: 100 }], { learner_id: null }));
+    expect(response.status).toBe(400);
+  });
+
+  it("renders as a PDF that reprints identically", async () => {
+    const created = await (await issue(invoice([{ income_category_id: feeId, payment_period_id: periodId, amount: 500 }]))).json();
+    const fetchPdf = async () => {
+      const response = await GET_DOCUMENT(
+        request(`${DOCUMENTS_URL}/${created.document_id}`, { token: adminToken }),
+        params({ school_id: SCHOOL, document_id: String(created.document_id) })
+      );
+      expect(response.status).toBe(200);
+      return Buffer.from(await response.arrayBuffer());
+    };
+    const first = await fetchPdf();
+    expect(first.subarray(0, 5).toString()).toBe("%PDF-");
+    expect((await fetchPdf()).equals(first)).toBe(true);
   });
 });
 

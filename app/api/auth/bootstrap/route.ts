@@ -9,6 +9,7 @@ import {
 import { validatePassword } from "../../../../lib/auth/passwordPolicy";
 import { createSession } from "../../../../lib/auth/session";
 import { setSessionCookie } from "../../../../lib/auth/cookies";
+import { issueSecurityKey } from "../../../../repositories/auth/securityKey";
 
 export const runtime = "nodejs";
 
@@ -62,9 +63,14 @@ export async function POST(request: Request) {
 
     // Signed straight in — they just proved who they are by creating the
     // account, and a sign-in form immediately afterwards is pure friction.
+    // The first administrator gets a security key straight away: if they are
+    // ever the only administrator and forget their password, there is nobody
+    // else to reset it. Shown once on the setup screen.
+    const security_key = await issueSecurityKey(created.employee_id);
+
     const { token, expiresAt } = await createSession(created.employee_id, created.school_id);
 
-    const response = NextResponse.json(created, { status: 201 });
+    const response = NextResponse.json({ ...created, security_key }, { status: 201 });
     setSessionCookie(response, request, token, expiresAt);
     return response;
   } catch (error) {

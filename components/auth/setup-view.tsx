@@ -7,6 +7,7 @@ import { ShieldCheck } from 'lucide-react';
 import { authApi, type NewSchoolInput } from '../../services/auth';
 import { MIN_PASSWORD_LENGTH } from '../../lib/auth/passwordPolicy';
 import { AuthCard } from './auth-card';
+import { SecurityKeyReveal } from './security-key-reveal';
 
 const EMPTY_SCHOOL: NewSchoolInput = {
   school_id: '',
@@ -34,6 +35,8 @@ export function SetupView() {
   const [newSchool, setNewSchool] = useState<NewSchoolInput>(EMPTY_SCHOOL);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  // The first administrator's security key, shown once before continuing.
+  const [createdKey, setCreatedKey] = useState<string | null>(null);
 
   const availability = useQuery({ queryKey: ['setup-availability'], queryFn: authApi.setupAvailability });
 
@@ -51,19 +54,35 @@ export function SetupView() {
 
     setPending(true);
     try {
-      await authApi.bootstrap({
+      const created = await authApi.bootstrap({
         first_name: firstName,
         last_name: lastName,
         password,
         ...(mustCreateSchool ? { new_school: newSchool } : { school_id: schoolId || schools[0]?.school_id }),
       });
-      // Bootstrap signs them in, so there is nothing else to do here.
-      router.replace('/');
-      router.refresh();
+      // Bootstrap signs them in; the security key is shown before moving on.
+      setCreatedKey(created.security_key);
+      setPending(false);
     } catch (setupError) {
       setError(setupError instanceof Error ? setupError.message : 'Setup failed.');
       setPending(false);
     }
+  }
+
+  if (createdKey) {
+    return (
+      <AuthCard title="Save your security key" detail="Your administrator account is ready.">
+        <SecurityKeyReveal
+          securityKey={createdKey}
+          intro="If you ever forget your password, this key lets you set a new one from the sign-in screen — even if you are the only administrator."
+          continueLabel="Go to the app"
+          onContinue={() => {
+            router.replace('/');
+            router.refresh();
+          }}
+        />
+      </AuthCard>
+    );
   }
 
   if (availability.isLoading) {

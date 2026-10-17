@@ -10,6 +10,7 @@ import { getReportSummary } from "../../../../../../repositories/report/getRepor
 import { getPaymentsReport } from "../../../../../../repositories/report/getPaymentsReport";
 import { getOwingReport } from "../../../../../../repositories/report/getOwingReport";
 import { getExpensesReport } from "../../../../../../repositories/report/getExpensesReport";
+import { localDateKey } from "../../../../../../lib/dates";
 
 export const runtime = "nodejs";
 
@@ -52,7 +53,7 @@ export async function GET(request: Request, { params }: Params) {
             logo: logo?.data ?? null,
             reportTitle: "Financial Report",
             dateLabel,
-            generatedAtLabel: formatDateLabel(new Date().toISOString().slice(0, 10)),
+            generatedAtLabel: formatDateLabel(localDateKey()),
             summary: [
                 { label: "Total revenue", value: formatCurrency(summary.totalPayments) },
                 { label: "Total expenses", value: formatCurrency(summary.totalExpenses) },

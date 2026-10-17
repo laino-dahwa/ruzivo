@@ -58,6 +58,7 @@ export async function getDocument(school_id: string, document_id: number) {
       d.reference,
       d.body_html,
       d.statement_data,
+      d.invoice_data,
       d.signatory_name,
       d.signatory_title,
       d.issued_by_label,

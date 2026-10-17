@@ -21,6 +21,8 @@ export type IssueDocumentInput = {
   body_html: string;
   signatory_name: string;
   signatory_title: string;
+  /** Invoices only: which income streams, optionally for which period, and how much. */
+  invoice_lines?: { income_category_id: number; payment_period_id: number | null; amount: number }[];
 };
 
 function documentUrl(schoolId: string, documentId: number) {

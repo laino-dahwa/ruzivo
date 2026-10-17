@@ -584,6 +584,20 @@ export function PaymentsView() {
                       <div>
                         {(() => {
                           const status = feeStatusFor(block, blockIndex, lineIndex);
+                          // A once-off fee is payable only in the periods it
+                          // was set up for; the server refuses anything else,
+                          // so say so before the cashier submits.
+                          const income = ref.incomeCategories.data?.find((i) => String(i.income_category_id) === line.income_category_id);
+                          const wrongOnceOffPeriod =
+                            income?.priority === 'ONCE_OFF'
+                            && !!block.payment_period_id
+                            && !income.payment_period_ids.map(String).includes(block.payment_period_id);
+                          const onceOffPeriods = wrongOnceOffPeriod
+                            ? (ref.paymentPeriods.data ?? [])
+                                .filter((p) => income!.payment_period_ids.map(String).includes(String(p.payment_period_id)))
+                                .map((p) => p.period_name)
+                                .join(', ')
+                            : '';
                           return (
                             <>
                               <input
@@ -596,7 +610,12 @@ export function PaymentsView() {
                                 onChange={(e) => updateLine(blockIndex, lineIndex, { amount: e.target.value })}
                                 className="field"
                               />
-                              {status && (
+                              {wrongOnceOffPeriod && (
+                                <p className="mt-1 text-[10px] text-destructive" data-testid={`text-once-off-period-${blockIndex}-${lineIndex}`}>
+                                  {income!.income_name} is a once-off payment for {onceOffPeriods || 'other periods'} only.
+                                </p>
+                              )}
+                              {status && !wrongOnceOffPeriod && (
                                 <p className={`mt-1 text-[10px] ${status.remaining === 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
                                   {status.remaining === 0
                                     ? `Fully paid for ${status.periodName} — limit ${formatCurrency(status.limit)}`

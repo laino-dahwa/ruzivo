@@ -67,7 +67,7 @@ describe("migrations — fresh database", () => {
     });
     // Asserted in order and in full: a migration that stops being applied,
     // or one that lands out of sequence, is exactly the failure this catches.
-    expect(applied.map((m) => m.name)).toEqual(["001_initial_schema", "002_school_logos", "003_employees", "004_roles", "005_income_category_applicability", "006_auth_and_audit", "007_documents", "008_payroll", "009_performance_indexes"]);
+    expect(applied.map((m) => m.name)).toEqual(["001_initial_schema", "002_school_logos", "003_employees", "004_roles", "005_income_category_applicability", "006_auth_and_audit", "007_documents", "008_payroll", "009_performance_indexes", "010_document_invoices", "011_once_off_income", "012_security_keys"]);
   });
 
   it("creates every table the application code depends on", async () => {
@@ -266,15 +266,38 @@ describe("migrations — fresh database", () => {
     ]));
   });
 
-  it("rolls 009 back cleanly and re-applies it", async () => {
-    const down = await runner({ databaseUrl: testDbConfig(), dir: migrationsDir, direction: "down", count: 1, migrationsTable: "pgmigrations", log: () => {} });
-    expect(down.map((m) => m.name)).toEqual(["009_performance_indexes"]);
+  it("rolls every migration after 008 back cleanly and re-applies them", async () => {
+    // Every file after 008, so this keeps covering new migrations without edits.
+    const { readdirSync } = await import("node:fs");
+    const later = readdirSync(migrationsDir)
+      .filter((file) => file.endsWith(".sql") && file > "008_payroll.sql")
+      .map((file) => file.replace(/\.sql$/, ""))
+      .sort();
+
+    // A once-off fee has to survive the rollback of 011 as something the old
+    // constraint accepts.
+    const setup = new Pool(testDbConfig());
+    await setup.query("INSERT INTO schools (school_id, school_name) VALUES ('ZZR', 'Rollback Check')");
+    await setup.query("INSERT INTO income_categories (school_id, income_name, priority) VALUES ('ZZR', 'Registration', 'ONCE_OFF')");
+    await setup.end();
+
+    const down = await runner({ databaseUrl: testDbConfig(), dir: migrationsDir, direction: "down", count: later.length, migrationsTable: "pgmigrations", log: () => {} });
+    expect(down.map((m) => m.name)).toEqual([...later].reverse());
+
     const pool = new Pool(testDbConfig());
     const left = await pool.query("SELECT count(*) AS total FROM pg_indexes WHERE indexname = 'idx_payments_paid_at'");
+    const columns = await pool.query(
+      "SELECT count(*) AS total FROM information_schema.columns WHERE (table_name = 'documents' AND column_name = 'invoice_data') OR (table_name = 'employees' AND column_name = 'security_key_hash')"
+    );
+    const fee = await pool.query("SELECT priority FROM income_categories WHERE school_id = 'ZZR'");
+    await pool.query("DELETE FROM schools WHERE school_id = 'ZZR'");
     await pool.end();
     expect(Number(left.rows[0].total)).toBe(0);
+    expect(Number(columns.rows[0].total)).toBe(0);
+    expect(fee.rows[0].priority).toBe("OPTIONAL");
+
     const up = await runner({ databaseUrl: testDbConfig(), dir: migrationsDir, direction: "up", migrationsTable: "pgmigrations", log: () => {} });
-    expect(up.map((m) => m.name)).toEqual(["009_performance_indexes"]);
+    expect(up.map((m) => m.name)).toEqual(later);
   });
 
   it("running migrations again is a no-op (idempotent)", async () => {

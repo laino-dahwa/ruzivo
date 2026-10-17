@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { KeyRound, LogOut } from 'lucide-react';
+import { KeyRound, LogOut, ShieldCheck } from 'lucide-react';
 import { authApi } from '../../services/auth';
 import type { ShellActor } from './app-shell';
 
@@ -74,6 +74,15 @@ export function UserMenu({ actor }: { actor: ShellActor }) {
               data-testid="link-change-password"
             >
               <KeyRound size={14} />Change password
+            </Link>
+            <Link
+              href="/security-key"
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs text-foreground hover:bg-secondary"
+              role="menuitem"
+              data-testid="link-security-key"
+            >
+              <ShieldCheck size={14} />Security key
             </Link>
             <button
               type="button"

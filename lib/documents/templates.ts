@@ -11,7 +11,7 @@
  * alignment. Anything richer would look right on screen and wrong on paper.
  */
 
-export const DOCUMENT_TYPES = ["transfer_letter", "acknowledgement_letter", "newsletter", "fee_statement", "general_letter"] as const;
+export const DOCUMENT_TYPES = ["transfer_letter", "acknowledgement_letter", "newsletter", "fee_statement", "invoice", "general_letter"] as const;
 
 export type DocumentType = (typeof DOCUMENT_TYPES)[number];
 
@@ -25,6 +25,10 @@ export type TemplateDefinition = {
   requiresLearner: boolean;
   /** Whether the locked statement-of-account block is inserted. */
   includesStatement: boolean;
+  /** Whether the invoice items table is inserted (lib/documents/invoice.ts). */
+  includesInvoice?: boolean;
+  /** How the printed reference is labelled — "Ref" unless set. */
+  referenceLabel?: string;
   defaultTitle: string;
   body: string;
 };
@@ -97,6 +101,20 @@ export const TEMPLATES: TemplateDefinition[] = [
     defaultTitle: "Statement of Account",
     body: `<p>Dear Parent or Guardian,</p>
 <p>Please find below the statement of account for <strong>{{learner_name}}</strong> of {{class_name}} (Learner ID {{learner_id}}) as at {{today}}.</p>`,
+  },
+  {
+    type: "invoice",
+    label: "Invoice",
+    code: "IN",
+    description: "Bill a learner's parent for the income streams you choose. Each starts at its default limit, which you can change for this invoice.",
+    requiresLearner: true,
+    includesStatement: false,
+    includesInvoice: true,
+    referenceLabel: "Invoice No",
+    defaultTitle: "Invoice",
+    body: `<p>Dear Parent or Guardian,</p>
+<p>Please find below the fees due for <strong>{{learner_name}}</strong> of {{class_name}} (Learner ID {{learner_id}}) for the {{academic_year}} academic year, as at {{today}}.</p>
+<p>Kindly settle this invoice at the school office, quoting the invoice number above. Please contact us on {{school_contact}} with any questions.</p>`,
   },
   {
     type: "newsletter",

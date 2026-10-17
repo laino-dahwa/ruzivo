@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import {getIncomeCategories} from "../../../../../repositories/school/read/getInomeCategories"
-import { createIncomeCategory } from "@/repositories/school/create/createIncomeCategory";
+import { createIncomeCategory, IncomeCategoryInputError } from "@/repositories/school/create/createIncomeCategory";
 import { UpdateIncomeCategory } from "@/repositories/school/update/updateIncomeCategories";
 
 import { deleteIncomeCategory } from "../../../../../repositories/school/delete/deleteIncomeCategory";
@@ -45,6 +45,10 @@ export async function POST(request:Request){
             }
         )
     }catch(error){
+        if (error instanceof IncomeCategoryInputError) {
+            return NextResponse.json({ error: error.message }, { status: 400 })
+        }
+
         console.error("Income category Creation Failed :",error)
 
         return NextResponse.json(
@@ -86,6 +90,10 @@ export async function PATCH(request:Request){
             }
         )
     }catch(error){
+        if (error instanceof IncomeCategoryInputError) {
+            return NextResponse.json({ error: error.message }, { status: 400 })
+        }
+
         console.error("Income category Update Failed :",error)
 
         return NextResponse.json(

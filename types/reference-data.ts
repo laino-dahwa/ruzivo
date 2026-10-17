@@ -3,7 +3,7 @@ export type Gender = { gender_id: number; school_id: string; gender_name: string
 export type AcademicYear = { academic_year_id: number; school_id: string; academic_year_name: string; start_date: string; end_date: string };
 export type PaymentPeriod = { payment_period_id: number; school_id: string; period_name: string };
 export type PaymentMethod = { payment_method_id: number; school_id: string; method_name: string };
-export type IncomeCategoryPriority = 'MANDATORY' | 'OPTIONAL';
+export type IncomeCategoryPriority = 'MANDATORY' | 'OPTIONAL' | 'ONCE_OFF';
 export type ClassApplicability = 'ALL_LEARNERS' | 'SPECIFIC_CLASSES' | 'SPECIFIC_LEARNERS';
 export type PeriodApplicability = 'ALL_PERIODS' | 'SPECIFIC_PERIODS';
 

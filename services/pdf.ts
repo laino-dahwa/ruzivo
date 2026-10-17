@@ -1,5 +1,6 @@
 import { getDesktopBridge } from '../lib/platform';
 import { errorMessageFor } from './http';
+import { localDateKey } from '../lib/dates';
 
 /**
  * Fetches any downloadable file from an API route and saves it. The single
@@ -34,10 +35,10 @@ export const downloadPdfFrom = downloadFileFrom;
 
 /** `learners` -> `learners-2026-09-07.pdf`, matching the server's filename. */
 export function datedPdfName(stem: string): string {
-  return `${stem}-${new Date().toISOString().slice(0, 10)}.pdf`;
+  return `${stem}-${localDateKey()}.pdf`;
 }
 
 /** `sch1-export` -> `sch1-export-2026-09-07.xlsx`. */
 export function datedFileName(stem: string, extension: string): string {
-  return `${stem}-${new Date().toISOString().slice(0, 10)}.${extension}`;
+  return `${stem}-${localDateKey()}.${extension}`;
 }

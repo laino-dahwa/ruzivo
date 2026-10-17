@@ -1,6 +1,6 @@
 import { transaction } from "../../../lib/db";
 import { insertIncomeCategoryMembership } from "../incomeCategoryMembership";
-import type { ClassApplicability, IncomeCategoryPriority, PeriodApplicability } from "../create/createIncomeCategory";
+import { onceOffNormalised, type ClassApplicability, type IncomeCategoryPriority, type PeriodApplicability } from "../create/createIncomeCategory";
 
 export type UpdateIncomeCategoryInput = {
   school_id: string;
@@ -33,7 +33,8 @@ export async function UpdateIncomeCategory(rows: UpdateIncomeCategoryInput[]) {
   return transaction(async (client) => {
     const updated = [];
 
-    for (const row of rows) {
+    for (const raw of rows) {
+      const row = onceOffNormalised(raw);
       const result = await client.query(
         `
         UPDATE income_categories

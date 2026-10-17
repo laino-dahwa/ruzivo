@@ -16,6 +16,8 @@ import { SectionHeading } from '../shared/section-heading';
 import { NoSchoolNotice } from '../shared/no-school-notice';
 import { ErrorNotice } from '../shared/error-notice';
 import { RichTextEditor } from './rich-text-editor';
+import { InvoiceItems, invoiceTotal, type InvoiceItemDraft } from './invoice-items';
+import { useSchoolReferenceData } from '../reference-data/use-school-reference-data';
 
 function todayLabel(): string {
   return new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
@@ -34,8 +36,10 @@ export function StatementsView() {
   const [signatoryTitle, setSignatoryTitle] = useState('Head Teacher');
   const [issued, setIssued] = useState<{ document_id: number; reference: string } | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [invoiceItems, setInvoiceItems] = useState<InvoiceItemDraft[]>([]);
 
   const template = templateFor(documentType) ?? TEMPLATES[0];
+  const ref = useSchoolReferenceData(schoolId);
 
   const school = useQuery({
     queryKey: ['school', schoolId],
@@ -96,6 +100,13 @@ export function StatementsView() {
         body_html: bodyHtml,
         signatory_name: signatoryName,
         signatory_title: signatoryTitle,
+        invoice_lines: template.includesInvoice
+          ? invoiceItems.map((item) => ({
+              income_category_id: item.income_category_id,
+              payment_period_id: item.payment_period_id ? Number(item.payment_period_id) : null,
+              amount: Number(item.amount),
+            }))
+          : undefined,
       }),
     onSuccess: (created) => {
       setIssued({ document_id: created.document_id, reference: created.reference });
@@ -113,7 +124,11 @@ export function StatementsView() {
   }
 
   const missingLearner = template.requiresLearner && !learner;
-  const canIssue = !!schoolId && !missingLearner && !!signatoryName.trim() && !!bodyHtml.trim() && !issue.isPending;
+  // Every invoice line needs a positive amount — a fee with no default limit
+  // starts blank and has to be filled in.
+  const invoiceIncomplete =
+    !!template.includesInvoice && (invoiceItems.length === 0 || invoiceItems.some((item) => !(Number(item.amount) > 0)));
+  const canIssue = !!schoolId && !missingLearner && !invoiceIncomplete && !!signatoryName.trim() && !!bodyHtml.trim() && !issue.isPending;
 
   return (
     <>
@@ -225,6 +240,28 @@ export function StatementsView() {
                   Recalculated from the live records when the document is issued, so it always matches the system.
                 </p>
               </div>
+            )}
+
+            {template.includesInvoice && (
+              <>
+                <InvoiceItems
+                  incomeCategories={ref.incomeCategories.data ?? []}
+                  paymentPeriods={ref.paymentPeriods.data ?? []}
+                  items={invoiceItems}
+                  onChange={(next) => {
+                    setInvoiceItems(next);
+                    setIssued(null);
+                  }}
+                />
+                {invoiceIncomplete && (
+                  <p className="mt-1 text-[11px] text-destructive">
+                    {invoiceItems.length === 0 ? 'Choose at least one income stream.' : 'Every item needs an amount greater than zero.'}
+                  </p>
+                )}
+                {!invoiceIncomplete && (
+                  <p className="mt-1 text-[11px] text-muted-foreground">Total due: {formatCurrency(invoiceTotal(invoiceItems))}</p>
+                )}
+              </>
             )}
 
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
