@@ -10,6 +10,7 @@ import { startNextServer, stopNextServer } from './next-server';
 import { createMainWindow, createSetupWindow } from './window';
 import { closeSplash, openSplash, setSplashStatus } from './splash';
 import { checkForUpdates, initAutoUpdater, quitAndInstallUpdate } from './updater';
+import { discardQueuedReceipts, RECEIPT_JOB_NAME, scheduleStuckReceiptCleanup } from './print-queue';
 
 // Set RUZIVO_FORCE_PRODUCTION=1 to exercise the packaged-app startup path
 // (Postgres setup screen -> migrations -> spawned standalone server) during
@@ -79,6 +80,10 @@ ipcMain.on('window:set-icon', async (event, url: unknown) => {
  * user is looking at. Not silent — the dialog is what lets the user pick the
  * actual receipt printer from whatever's installed, rather than this app
  * having to know or store which one that is.
+ *
+ * Receipts are never kept for later: one that can't reach a printer is
+ * removed from the Windows spooler shortly after (see print-queue.ts), and
+ * any left over from a previous session are cleared at startup.
  */
 ipcMain.handle('print:receipt', async (_event, html: unknown) => {
   if (typeof html !== 'string') {
@@ -96,8 +101,11 @@ ipcMain.handle('print:receipt', async (_event, html: unknown) => {
     // receipt's logo <img> can still be mid-fetch a moment later, and
     // printing before it paints has produced a blank page in testing.
     await new Promise((resolve) => setTimeout(resolve, 300));
+    // The page title becomes the spooler's document name, which is how
+    // print-queue.ts recognises Ruzivo receipts (and only those).
+    await printWindow.webContents.executeJavaScript(`document.title = ${JSON.stringify(RECEIPT_JOB_NAME)}`);
 
-    return await new Promise<{ ok: boolean; error?: string }>((resolve) => {
+    const result = await new Promise<{ ok: boolean; error?: string }>((resolve) => {
       printWindow.webContents.print({
         silent: false,
         printBackground: true,
@@ -125,6 +133,8 @@ ipcMain.handle('print:receipt', async (_event, html: unknown) => {
         resolve(success ? { ok: true } : { ok: false, error: failureReason });
       });
     });
+    if (result.ok) scheduleStuckReceiptCleanup();
+    return result;
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
   } finally {
@@ -299,6 +309,10 @@ app.whenReady().then(async () => {
   // No File/Edit/View/Window menu bar — this is a business app, not a
   // document editor, and none of those menus have anything useful in them.
   Menu.setApplicationMenu(null);
+
+  // Receipts still queued from a previous session must not print now.
+  // Fire-and-forget: startup never waits on the print spooler.
+  void discardQueuedReceipts({ all: true });
 
   try {
     if (isProductionFlow) {
