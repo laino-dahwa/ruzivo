@@ -6,6 +6,7 @@
   "author": "laino-dahwa",
   "main": "dist-electron/main.js",
   "scripts": {
+    "predev": "node scripts/dev-db.mjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
