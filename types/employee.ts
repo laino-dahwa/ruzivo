@@ -23,3 +23,8 @@ export type CreateEmployeeInput = {
 export type CreatedEmployee = Employee & {
   temporary_password: string;
 };
+
+/** Response to an administrator's password reset — the password is shown once. */
+export type ResetEmployeePassword = Pick<Employee, 'employee_id' | 'first_name' | 'last_name' | 'email'> & {
+  temporary_password: string;
+};

@@ -43,12 +43,24 @@ Those addresses are **not real email addresses**. Nothing is ever sent to them �
 
 New staff are asked to choose their own password the first time they sign in, and cannot use the rest of the app until they do.
 
+## Resetting a forgotten password
+
+An administrator resets it in **School setup → Employees**, with the key icon on that person's row. This:
+
+- issues a new one-time password, shown once on screen — hand it over in person;
+- signs the person out everywhere, so nothing signed in with the old password keeps working;
+- clears any lockout from wrong passwords;
+- requires them to choose their own password again when they next sign in;
+- records who reset whose password in the audit log (never the password itself).
+
+The key icon is not shown on your own row: change your own password from the user menu with **Change password**, which asks for the current one. If the only administrator has forgotten their password, use the break-glass steps below.
+
 ## Sessions
 
 - A session lasts **4 hours of inactivity**, sliding forward each time you use the app, up to a hard limit of **12 hours** from signing in. Then you sign in again.
 - Signing out ends it immediately.
 - Changing your password ends every other session for your account.
-- Five wrong passwords in a row locks the account for **15 minutes**. It unlocks on its own; an administrator can clear it sooner.
+- Five wrong passwords in a row locks the account for **15 minutes**. It unlocks on its own; an administrator can clear it sooner by resetting the password.
 
 Everything runs against the local database. There is no internet connection involved at any point, no cloud login, and nothing leaves the machine.
 

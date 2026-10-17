@@ -2,10 +2,11 @@
 
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Copy, Trash2, UserPlus } from 'lucide-react';
+import { Copy, KeyRound, Trash2, UserPlus } from 'lucide-react';
 import { useToast } from '../../app/components/hooks/use-toast';
+import { authApi } from '../../services/auth';
 import { employeesApi } from '../../services/employees';
-import type { CreatedEmployee, Employee } from '../../types/employee';
+import type { Employee, ResetEmployeePassword } from '../../types/employee';
 import type { Role } from '../../types/reference-data';
 import { ConfirmDialog } from '../shared/confirm-dialog';
 
@@ -15,6 +16,11 @@ import { ConfirmDialog } from '../shared/confirm-dialog';
  * (repositories/employee/create) and the password is shown here exactly
  * once, since it is never stored in the clear and can't be recovered later.
  *
+ * "Reset password" is the in-person recovery the sign-in page points to: it
+ * issues a fresh one-time password the same way, ends the person's sessions
+ * and clears any lockout. Not offered on your own row — your own password
+ * goes through Change password, which asks for the current one.
+ *
  * `roles` comes from the Roles reference-data card above this one on the
  * School setup page — roles are managed there, and picked from here.
  */
@@ -22,8 +28,13 @@ export function EmployeesCard({ schoolId, roles }: { schoolId: string; roles: Ro
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [form, setForm] = useState({ first_name: '', last_name: '', role_id: '' });
-  const [justCreated, setJustCreated] = useState<CreatedEmployee | null>(null);
+  // The one-time password just issued — by adding an employee or by a reset.
+  const [issued, setIssued] = useState<(ResetEmployeePassword & { reason: 'created' | 'reset' }) | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Employee | null>(null);
+  const [pendingReset, setPendingReset] = useState<Employee | null>(null);
+
+  const sessionQuery = useQuery({ queryKey: ['session'], queryFn: authApi.session, staleTime: 60_000 });
+  const myEmployeeId = sessionQuery.data?.actor?.employee_id;
 
   const employeesQuery = useQuery({
     queryKey: ['employees', schoolId],
@@ -33,7 +44,7 @@ export function EmployeesCard({ schoolId, roles }: { schoolId: string; roles: Ro
   const create = useMutation({
     mutationFn: () => employeesApi.create(schoolId, [{ school_id: schoolId, first_name: form.first_name, last_name: form.last_name, role_id: Number(form.role_id) }]),
     onSuccess: ([created]) => {
-      setJustCreated(created);
+      setIssued({ ...created, reason: 'created' });
       setForm({ first_name: '', last_name: '', role_id: '' });
       toast({ title: 'Employee added', description: `${created.email} is ready to sign in.` });
       queryClient.invalidateQueries({ queryKey: ['employees', schoolId] });
@@ -54,10 +65,23 @@ export function EmployeesCard({ schoolId, roles }: { schoolId: string; roles: Ro
     },
   });
 
+  const resetPassword = useMutation({
+    mutationFn: (employeeId: number) => employeesApi.resetPassword(schoolId, employeeId),
+    onSuccess: (reset) => {
+      setIssued({ ...reset, reason: 'reset' });
+      setPendingReset(null);
+      toast({ title: 'Password reset', description: `${reset.email} has been signed out everywhere.` });
+    },
+    onError: (error) => {
+      toast({ title: 'Could not reset password', description: (error as Error).message, variant: 'destructive' });
+      setPendingReset(null);
+    },
+  });
+
   const copyPassword = async () => {
-    if (!justCreated) return;
+    if (!issued) return;
     try {
-      await navigator.clipboard.writeText(justCreated.temporary_password);
+      await navigator.clipboard.writeText(issued.temporary_password);
       toast({ title: 'Password copied' });
     } catch {
       toast({ title: 'Could not copy', description: 'Select and copy it manually instead.', variant: 'destructive' });
@@ -90,17 +114,21 @@ export function EmployeesCard({ schoolId, roles }: { schoolId: string; roles: Ro
         </form>
       )}
 
-      {justCreated && (
+      {issued && (
         <div className="mt-4 rounded-lg border border-primary/40 bg-primary/5 p-3 text-xs" data-testid="panel-new-employee-password">
-          <p className="font-semibold">{justCreated.first_name} {justCreated.last_name}&rsquo;s temporary password</p>
-          <p className="mt-1 text-muted-foreground">Shown once — copy it now and share it with them. They&rsquo;ll be asked to change it on first sign-in.</p>
+          <p className="font-semibold">
+            {issued.first_name} {issued.last_name}&rsquo;s {issued.reason === 'reset' ? 'new temporary password' : 'temporary password'}
+          </p>
+          <p className="mt-1 text-muted-foreground">
+            Shown once — copy it now and share it with them. They&rsquo;ll be asked to change it {issued.reason === 'reset' ? 'when they next sign in' : 'on first sign-in'}.
+          </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            <code className="rounded-md bg-secondary px-2 py-1 font-mono">{justCreated.email}</code>
-            <code className="rounded-md bg-secondary px-2 py-1 font-mono" data-testid="text-temporary-password">{justCreated.temporary_password}</code>
+            <code className="rounded-md bg-secondary px-2 py-1 font-mono">{issued.email}</code>
+            <code className="rounded-md bg-secondary px-2 py-1 font-mono" data-testid="text-temporary-password">{issued.temporary_password}</code>
             <button type="button" onClick={copyPassword} className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground" title="Copy password">
               <Copy size={14} />
             </button>
-            <button type="button" onClick={() => setJustCreated(null)} className="ml-auto text-[11px] text-muted-foreground hover:text-foreground">Dismiss</button>
+            <button type="button" onClick={() => setIssued(null)} className="ml-auto text-[11px] text-muted-foreground hover:text-foreground">Dismiss</button>
           </div>
         </div>
       )}
@@ -124,6 +152,18 @@ export function EmployeesCard({ schoolId, roles }: { schoolId: string; roles: Ro
                 <td className="px-3 py-2">{employee.role_name}</td>
                 <td className="px-3 py-2 text-muted-foreground">{employee.email}</td>
                 <td className="px-3 py-2 text-right">
+                  {/* The list's BIGINT id arrives as a string, the session's as a number. */}
+                  {Number(employee.employee_id) !== myEmployeeId && (
+                    <button
+                      type="button"
+                      title="Reset password"
+                      onClick={() => setPendingReset(employee)}
+                      className="rounded-md p-1.5 text-muted-foreground hover:bg-primary/10 hover:text-primary"
+                      data-testid={`button-reset-password-${employee.employee_id}`}
+                    >
+                      <KeyRound size={14} />
+                    </button>
+                  )}
                   <button
                     type="button"
                     title="Remove this employee"
@@ -139,6 +179,16 @@ export function EmployeesCard({ schoolId, roles }: { schoolId: string; roles: Ro
           </tbody>
         </table>
       </div>
+
+      <ConfirmDialog
+        open={!!pendingReset}
+        title="Reset this password?"
+        description={pendingReset ? `${pendingReset.first_name} ${pendingReset.last_name} will be signed out everywhere and given a new one-time password, which they must change when they next sign in.` : undefined}
+        confirmLabel="Reset password"
+        pending={resetPassword.isPending}
+        onCancel={() => setPendingReset(null)}
+        onConfirm={() => pendingReset && resetPassword.mutate(pendingReset.employee_id)}
+      />
 
       <ConfirmDialog
         open={!!pendingDelete}
