@@ -7,6 +7,7 @@ import {
   Receipt,
   Scale,
   ShieldAlert,
+  UserRoundSearch,
   Users,
   Wallet,
 } from 'lucide-react';
@@ -51,6 +52,7 @@ export const nav: NavItem[] = [
   { href: '/payments', label: 'Payments', icon: CircleDollarSign, capability: 'payment.read', group: 'money' },
   { href: '/owing', label: 'Balances', icon: Scale, capability: 'balance.read', group: 'money' },
   { href: '/unpaid-mandatory', label: 'Expected fees', icon: ShieldAlert, capability: 'obligation.read', group: 'money' },
+  { href: '/learner-owings', label: 'Learner owings', icon: UserRoundSearch, capability: 'obligation.read', group: 'money' },
   { href: '/expenses', label: 'Expenses', icon: Receipt, capability: 'expense.read', group: 'money' },
 
   { href: '/learners', label: 'Learners', icon: Users, capability: 'learner.read', group: 'people' },
@@ -63,8 +65,8 @@ export const nav: NavItem[] = [
 
 /**
  * Below this many visible links, headings are more clutter than help — a
- * cashier sees five, which takes in at a glance without being sorted into
+ * cashier sees six, which takes in at a glance without being sorted into
  * piles. Keyed off the count rather than the role so it stays right if
  * permissions ever move.
  */
-export const GROUPING_THRESHOLD = 6;
+export const GROUPING_THRESHOLD = 7;

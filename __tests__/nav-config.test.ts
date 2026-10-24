@@ -31,11 +31,12 @@ describe("what each role sees", () => {
     expect(visibleTo("ADMIN")).toHaveLength(nav.length);
   });
 
-  it("shows a cashier only the five pages they can work in", () => {
+  it("shows a cashier only the six pages they can work in", () => {
     expect(visibleTo("CASHIER").map((item) => item.label)).toEqual([
       "Payments",
       "Balances",
       "Expected fees",
+      "Learner owings",
       "Expenses",
       "Learners",
     ]);
@@ -52,7 +53,7 @@ describe("what each role sees", () => {
 describe("grouping", () => {
   it("groups the administrator's list and leaves the cashier's flat", () => {
     // Headings only earn their vertical space once there is enough to sort
-    // through; five items read fine as one run.
+    // through; six items read fine as one run.
     expect(visibleTo("ADMIN").length).toBeGreaterThanOrEqual(GROUPING_THRESHOLD);
     expect(visibleTo("CASHIER").length).toBeLessThan(GROUPING_THRESHOLD);
   });

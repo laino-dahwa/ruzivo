@@ -82,6 +82,7 @@ export const ROUTE_CAPABILITIES = {
   "/payments": "payment.read",
   "/owing": "balance.read",
   "/unpaid-mandatory": "obligation.read",
+  "/learner-owings": "obligation.read",
   "/expenses": "expense.read",
   "/reports": "report.read",
   "/statements": "document.manage",
