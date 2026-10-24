@@ -6,7 +6,9 @@ import { useQuery } from '@tanstack/react-query';
 import { ShieldCheck } from 'lucide-react';
 import { authApi, type NewSchoolInput } from '../../services/auth';
 import { MIN_PASSWORD_LENGTH } from '../../lib/auth/passwordPolicy';
+import { useBackupBridge } from '../shared/use-backup-bridge';
 import { AuthCard } from './auth-card';
+import { FirstRunChoice } from './first-run-restore';
 import { SecurityKeyReveal } from './security-key-reveal';
 
 const EMPTY_SCHOOL: NewSchoolInput = {
@@ -37,6 +39,8 @@ export function SetupView() {
   const [pending, setPending] = useState(false);
   // The first administrator's security key, shown once before continuing.
   const [createdKey, setCreatedKey] = useState<string | null>(null);
+  const [startFresh, setStartFresh] = useState(false);
+  const backupBridge = useBackupBridge();
 
   const availability = useQuery({ queryKey: ['setup-availability'], queryFn: authApi.setupAvailability });
 
@@ -87,6 +91,12 @@ export function SetupView() {
 
   if (availability.isLoading) {
     return <AuthCard title="Setting up" detail="Checking whether this app has an administrator yet."><p className="text-xs text-muted-foreground">Loading…</p></AuthCard>;
+  }
+
+  // A desktop install with nothing on it yet first offers to bring a backup
+  // across from another computer, before anyone creates a fresh account.
+  if (availability.data?.available && backupBridge && !startFresh) {
+    return <FirstRunChoice bridge={backupBridge} onStartFresh={() => setStartFresh(true)} />;
   }
 
   if (availability.data && !availability.data.available) {

@@ -65,3 +65,25 @@ export async function applyMigrations(config: DesktopDbConfig & { password: stri
   });
   return applied.map((m) => m.name);
 }
+
+/**
+ * Runs the same migrations into another schema of the same database - all of
+ * them, or only the first `count`. A restore uses this to rebuild a backup at
+ * its own schema version before bringing it up to date (backup/restore-backup.ts).
+ */
+export async function migrateSchema(
+  config: DesktopDbConfig & { password: string },
+  migrationsDir: string,
+  options: { schema: string; count?: number }
+): Promise<void> {
+  const runner = await loadRunner();
+  await runner({
+    ...toRunnerConfig(config, migrationsDir),
+    schema: options.schema,
+    migrationsSchema: options.schema,
+    createSchema: true,
+    createMigrationsSchema: true,
+    ...(options.count !== undefined ? { count: options.count } : {}),
+    log: () => {},
+  });
+}

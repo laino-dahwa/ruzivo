@@ -63,6 +63,10 @@ export const CAPABILITIES = {
   // Staff salaries are the most sensitive data in the app — visible to
   // administrators only, never to the person at the till.
   "payroll.manage": ["ADMIN"],
+
+  // A backup is every school's data in one folder, salaries and sign-in
+  // details included, and a restore replaces all of it.
+  "backup.manage": ["ADMIN"],
 } as const satisfies Record<string, readonly AccessLevel[]>;
 
 export type Capability = keyof typeof CAPABILITIES;

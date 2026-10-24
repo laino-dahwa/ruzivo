@@ -19,8 +19,19 @@ type UpdateStatus =
   | { state: 'downloaded'; version: string }
   | { state: 'error'; message: string };
 
+// Results are passed straight through from electron/backup/ipc.ts; their
+// shapes are spelled out in lib/platform/index.ts (BackupStatus etc.).
+interface BackupBridge {
+  status(): Promise<unknown>;
+  create(): Promise<unknown>;
+  choose(mode: 'admin' | 'first-run'): Promise<unknown>;
+  restore(input: { selectionId: string; password?: string; mode: 'admin' | 'first-run' }): Promise<unknown>;
+  showLast(): Promise<void>;
+}
+
 interface DesktopBridge {
   readonly isDesktop: true;
+  backup: BackupBridge;
   getAppVersion(): Promise<string>;
   saveFile(suggestedName: string, data: Uint8Array): Promise<void>;
   checkForUpdates(): void;
@@ -32,6 +43,13 @@ interface DesktopBridge {
 }
 const bridge: DesktopBridge = {
   isDesktop: true,
+  backup: {
+    status: () => ipcRenderer.invoke('backup:status'),
+    create: () => ipcRenderer.invoke('backup:create'),
+    choose: (mode) => ipcRenderer.invoke('backup:choose', mode),
+    restore: (input) => ipcRenderer.invoke('backup:restore', input),
+    showLast: () => ipcRenderer.invoke('backup:show-last'),
+  },
   getAppVersion: () => ipcRenderer.invoke('app:get-version'),
   saveFile: (suggestedName, data) => ipcRenderer.invoke('dialog:save-file', { suggestedName, data }),
   checkForUpdates: () => ipcRenderer.send('updater:check'),

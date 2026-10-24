@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage } from 'electron';
 import path from 'node:path';
+import { readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { getDbConfig, getProvisioningMode, saveDbConfig, type DesktopDbConfig, type ProvisioningMode } from './config-store';
 import { ensureDatabaseExists, testConnection } from './postgres-setup';
@@ -11,6 +12,7 @@ import { createMainWindow, createSetupWindow } from './window';
 import { closeSplash, openSplash, setSplashStatus } from './splash';
 import { checkForUpdates, initAutoUpdater, quitAndInstallUpdate } from './updater';
 import { discardQueuedReceipts, RECEIPT_JOB_NAME, scheduleStuckReceiptCleanup } from './print-queue';
+import { registerBackupIpc } from './backup/ipc';
 
 // Set RUZIVO_FORCE_PRODUCTION=1 to exercise the packaged-app startup path
 // (Postgres setup screen -> migrations -> spawned standalone server) during
@@ -24,6 +26,48 @@ let ownsEmbeddedPostgres = false;
 // Set while a migration or backup is running so an update can't restart the
 // app mid-operation (see electron/updater.ts#quitAndInstallUpdate).
 let isMigratingOrBackingUp = false;
+// What the backup/restore handlers need to reach the same database and app
+// the window is using; set once startup has resolved them.
+let activeDbConfig: (DesktopDbConfig & { password: string }) | null = null;
+let appOrigin: string | null = null;
+
+const MIGRATIONS_DIR = app.isPackaged
+  ? path.join(process.resourcesPath, 'migrations')
+  : path.join(__dirname, '..', 'migrations');
+
+/**
+ * In development the database belongs to `npm run dev`, configured by
+ * .env.local - the same file the dev server and scripts/dev-db.mjs read.
+ */
+function devDbConfig(): (DesktopDbConfig & { password: string }) | null {
+  const env: Record<string, string> = {};
+  try {
+    for (const line of readFileSync(path.join(__dirname, '..', '.env.local'), 'utf8').split(/\r?\n/)) {
+      const match = line.match(/^([A-Z_][A-Z0-9_]*)=(.*)$/);
+      if (match) env[match[1]] = match[2];
+    }
+  } catch {
+    return null;
+  }
+  if (!env.PGDATABASE) return null;
+  return {
+    host: env.PGHOST || 'localhost',
+    port: Number(env.PGPORT || 5432),
+    user: env.PGUSER || 'postgres',
+    password: env.PGPASSWORD || '',
+    database: env.PGDATABASE,
+  };
+}
+
+registerBackupIpc({
+  getMainWindow: () => mainWindow,
+  getAppOrigin: () => appOrigin,
+  getDbConfig: () => activeDbConfig,
+  migrationsDir: MIGRATIONS_DIR,
+  setBusy: (busy) => {
+    isMigratingOrBackingUp = busy;
+  },
+});
 
 ipcMain.handle('app:get-version', () => app.getVersion());
 
@@ -234,9 +278,7 @@ async function startProductionFlow(): Promise<void> {
     openSplash();
   }
 
-  const migrationsDir = app.isPackaged
-    ? path.join(process.resourcesPath, 'migrations')
-    : path.join(__dirname, '..', 'migrations');
+  const migrationsDir = MIGRATIONS_DIR;
   const mode = getProvisioningMode();
 
   setSplashStatus('Checking your records…');
@@ -279,10 +321,12 @@ async function startProductionFlow(): Promise<void> {
   const appRoot = app.isPackaged ? process.resourcesPath : path.join(__dirname, '..');
   setSplashStatus('Almost ready…');
   await startNextServer({ appRoot, port: NEXT_SERVER_PORT, dbConfig });
+  activeDbConfig = dbConfig;
+  appOrigin = `http://127.0.0.1:${NEXT_SERVER_PORT}`;
 
   setupWindow?.close();
   setupWindow = null;
-  mainWindow = createMainWindow(`http://127.0.0.1:${NEXT_SERVER_PORT}`);
+  mainWindow = createMainWindow(appOrigin);
 
   // Handed over only once the app has actually painted, so there is never a
   // gap with no window on screen. Closed on 'closed' too, in case the window
@@ -302,7 +346,9 @@ async function startDevelopmentFlow(): Promise<void> {
   // Assumes `npm run dev` is already running separately — Electron in dev
   // mode is a thin viewer over the real Next.js dev server, so HMR keeps
   // working exactly as it does in a browser.
-  mainWindow = createMainWindow('http://localhost:3000');
+  activeDbConfig = devDbConfig();
+  appOrigin = 'http://localhost:3000';
+  mainWindow = createMainWindow(appOrigin);
 }
 
 app.whenReady().then(async () => {

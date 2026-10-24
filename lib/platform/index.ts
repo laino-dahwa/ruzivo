@@ -12,7 +12,71 @@ export type UpdateStatus =
   | { state: 'downloaded'; version: string }
   | { state: 'error'; message: string };
 
+export type BackupCounts = {
+  schools: number;
+  learners: number;
+  payments: number;
+  expenses: number;
+  employees: number;
+  payrollRuns: number;
+};
+
+/** Every backup call answers this way when it did not happen; `canceled` means the person closed the folder picker. */
+export type BackupFailure = { ok: false; error: string; canceled?: boolean };
+
+export type BackupStatus =
+  | {
+      ok: true;
+      lastBackup: { path: string; createdAt: string; createdBy: string | null; sizeBytes: number; tables: number } | null;
+      counts: BackupCounts;
+    }
+  | BackupFailure;
+
+export type BackupCreated =
+  | { ok: true; path: string; sizeBytes: number; durationMs: number; tables: { name: string; rows: number }[] }
+  | BackupFailure;
+
+export type BackupSelection =
+  | {
+      ok: true;
+      selectionId: string;
+      path: string;
+      backup: {
+        createdAt: string;
+        createdBy: string | null;
+        appVersion: string;
+        schools: { school_id: string; school_name: string }[];
+        counts: BackupCounts;
+      };
+      current: {
+        counts: BackupCounts;
+        newerSinceBackup: { payments: number; learners: number };
+        lastPaymentAt: string | null;
+      };
+    }
+  | BackupFailure;
+
+export type RestoreDone = { ok: true; safetyCopyPath: string } | BackupFailure;
+
+/**
+ * Backup and restore run in the desktop main process (electron/backup/),
+ * which owns the folder pickers and checks permission with the server itself.
+ * A restore only ever acts on a folder the main process picked and verified,
+ * referred to here by `selectionId`.
+ */
+export interface BackupBridge {
+  status(): Promise<BackupStatus>;
+  /** Opens a folder picker and writes a new backup folder inside the chosen one. */
+  create(): Promise<BackupCreated>;
+  /** Opens a folder picker and checks the chosen backup, without changing anything. */
+  choose(mode: 'admin' | 'first-run'): Promise<BackupSelection>;
+  restore(input: { selectionId: string; password?: string; mode: 'admin' | 'first-run' }): Promise<RestoreDone>;
+  showLast(): Promise<void>;
+}
+
 export interface DesktopBridge {
+  /** Absent in desktop builds older than the backup feature. */
+  backup?: BackupBridge;
   readonly isDesktop: true;
   getAppVersion(): Promise<string>;
   /** Hands bytes to a native "Save As" dialog instead of a browser download. */
