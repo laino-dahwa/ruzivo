@@ -52,6 +52,12 @@
  *    that selection. Suppressed period-by-period once a real charge exists
  *    for it, so it never duplicates a row `optional` already produces.
  *
+ *  - ONCE_OFF fees ride along in `optional`: a once-off fee is never owed
+ *    just by existing - it can be paid in any period, or never - but in each
+ *    period it HAS been paid in, its limit applies to that period and the
+ *    remainder shows as outstanding (5 of 20 paid in January: 15 owing for
+ *    January). Unlike OPTIONAL it is never projected into later periods.
+ *
  * `income_limit` is nullable; a mandatory fee with no configured limit
  * resolves `expected`/`balance`/`status` to NULL and is therefore excluded
  * from every outstanding/unpaid filter — an existing quirk (the same thing
@@ -133,7 +139,7 @@ export const OBLIGATIONS_CTE = `
     JOIN class_categories ca ON ca.class_category_id = e.class_category_id
     LEFT JOIN genders g ON g.gender_id = l.gender_id
     JOIN income_categories ic
-      ON ic.income_category_id = c.income_category_id AND ic.priority = 'OPTIONAL'
+      ON ic.income_category_id = c.income_category_id AND ic.priority IN ('OPTIONAL', 'ONCE_OFF')
     JOIN payment_periods pp ON pp.payment_period_id = c.payment_period_id
     JOIN academic_years ay ON ay.academic_year_id = c.academic_year_id
     LEFT JOIN payment_allocations pa ON pa.charge_id = c.charge_id

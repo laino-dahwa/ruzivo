@@ -112,6 +112,7 @@ export function UnpaidMandatoryView() {
                   <option value="">All</option>
                   <option value="MANDATORY">Mandatory</option>
                   <option value="OPTIONAL">Optional</option>
+                  <option value="ONCE_OFF">Once-off</option>
                 </select>
               </div>
               <div>
@@ -169,7 +170,7 @@ export function UnpaidMandatoryView() {
                       <td className="px-3 py-2">{row.first_name} {row.last_name}</td>
                       <td className="px-3 py-2">{row.class_name}</td>
                       <td className="px-3 py-2">{row.income_name}</td>
-                      <td className="px-3 py-2">{row.priority === 'MANDATORY' ? 'Mandatory' : 'Optional'}</td>
+                      <td className="px-3 py-2">{row.priority === 'MANDATORY' ? 'Mandatory' : row.priority === 'ONCE_OFF' ? 'Once-off' : 'Optional'}</td>
                       <td className="px-3 py-2">{row.period_name}</td>
                       <td className="px-3 py-2">{row.expected === null ? '—' : formatCurrency(row.expected)}</td>
                       <td className="px-3 py-2">{formatCurrency(row.paid)}</td>

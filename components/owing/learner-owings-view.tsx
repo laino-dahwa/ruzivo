@@ -225,7 +225,7 @@ function LearnerOwingCard({ learner, expanded, onToggle }: { learner: LearnerOwi
       {expanded && learner.outstanding.length > 0 && (
         <div className="mt-3 rounded-[10px] border border-border/70 bg-card px-3 py-2.5">
           {mandatory.length > 0 && <FeeGroup title="Mandatory" rows={mandatory} />}
-          {optional.length > 0 && <FeeGroup title="Optional" rows={optional} />}
+          {optional.length > 0 && <FeeGroup title={optional.some((row) => row.priority === 'ONCE_OFF') ? 'Optional & once-off' : 'Optional'} rows={optional} />}
         </div>
       )}
 

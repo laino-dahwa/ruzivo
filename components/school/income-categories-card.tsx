@@ -75,9 +75,9 @@ export function IncomeCategoriesCard({
     setEditingId(null);
   };
 
-  // A once-off fee is always for specific periods (at least one) — the
-  // server enforces the same (onceOffNormalised). Who it applies to works as
-  // for any other fee.
+  // A once-off fee is not tied to any period - it can be paid in any of
+  // them - so it has no period choice; the server does the same
+  // (onceOffNormalised). Who it applies to works as for any other fee.
   const onceOff = form.priority === 'ONCE_OFF';
   const buildPayload = () => ({
     school_id: schoolId,
@@ -85,10 +85,10 @@ export function IncomeCategoriesCard({
     income_limit: form.income_limit || null,
     priority: form.priority,
     class_applicability: form.class_applicability,
-    period_applicability: onceOff ? 'SPECIFIC_PERIODS' as const : form.period_applicability,
+    period_applicability: onceOff ? 'ALL_PERIODS' as const : form.period_applicability,
     class_category_ids: form.class_applicability === 'SPECIFIC_CLASSES' ? form.class_category_ids.map(Number) : [],
     learner_ids: form.class_applicability === 'SPECIFIC_LEARNERS' ? learnerTags.map((tag) => tag.learner_id) : [],
-    payment_period_ids: onceOff || form.period_applicability === 'SPECIFIC_PERIODS' ? form.payment_period_ids.map(Number) : [],
+    payment_period_ids: !onceOff && form.period_applicability === 'SPECIFIC_PERIODS' ? form.payment_period_ids.map(Number) : [],
   });
 
   const create = useMutation({
@@ -169,7 +169,7 @@ export function IncomeCategoriesCard({
 
         {onceOff && (
           <p className="text-[11px] text-muted-foreground sm:col-span-2" data-testid="text-once-off-note">
-            Paid once in each period chosen below by the learners it applies to — in full, or in instalments up to the limit. With no limit set, it can be paid one time per period. Never listed as owed.
+            Can be paid in any period, or not at all — it is never listed as owed just for existing. In the period it is paid in, the limit applies to that period: pay 5 of 20 in January and 15 shows as owing for January. Paying it again in another month starts that month&apos;s own limit. With no limit set, it can be paid one time per period.
           </p>
         )}
 
@@ -222,15 +222,7 @@ export function IncomeCategoriesCard({
           </div>
         )}
 
-        {onceOff ? (
-          <div className="sm:col-span-2">
-            <label className="mb-1 block text-[10px] font-semibold text-muted-foreground">Once-off for period(s)</label>
-            <MultiSelect options={periodOptions} value={form.payment_period_ids} onChange={(v) => setForm((f) => ({ ...f, payment_period_ids: v }))} emptyMessage="No payment periods configured yet — add one above first." />
-            {form.payment_period_ids.length === 0 && (
-              <p className="mt-1 text-[11px] text-destructive" data-testid="text-once-off-period-required">Choose at least one period.</p>
-            )}
-          </div>
-        ) : (
+        {onceOff ? null : (
           <>
             <div>
               <label className="mb-1 block text-[10px] font-semibold text-muted-foreground">Applicable periods</label>
@@ -250,7 +242,7 @@ export function IncomeCategoriesCard({
         )}
 
         <div className="flex items-center gap-3 sm:col-span-2">
-          <button type="submit" disabled={saving || (onceOff && form.payment_period_ids.length === 0)} className="button-lift flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-xs font-semibold text-primary-foreground disabled:opacity-60" data-testid="button-save-income-category">
+          <button type="submit" disabled={saving} className="button-lift flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-xs font-semibold text-primary-foreground disabled:opacity-60" data-testid="button-save-income-category">
             <Plus size={15} />{saving ? 'Saving…' : editingId ? 'Save changes' : 'Add'}
           </button>
           {editingId && <button type="button" onClick={resetForm} className="text-xs font-semibold text-muted-foreground hover:text-foreground">Cancel</button>}
@@ -280,10 +272,7 @@ export function IncomeCategoriesCard({
                 <td className="px-3 py-2">{applicabilityLabel(row, classCategories)}</td>
                 <td className="px-3 py-2">
                   {row.priority === 'ONCE_OFF'
-                    ? paymentPeriods
-                        .filter((period) => row.payment_period_ids.map(Number).includes(Number(period.payment_period_id)))
-                        .map((period) => period.period_name)
-                        .join(', ') || '—'
+                    ? 'Any period'
                     : row.period_applicability === 'ALL_PERIODS' ? 'All' : `${row.payment_period_ids.length} selected`}
                 </td>
                 <td className="px-3 py-2 text-right">

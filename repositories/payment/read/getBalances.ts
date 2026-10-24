@@ -17,7 +17,11 @@ import { query } from "../../../lib/db";
  * Overpaid rows (a negative balance, which a lowered fee limit can produce
  * after the fact) are deliberately kept: they are not settled, and hiding them
  * would bury the discrepancy.
+ *
+ * A once-off fee is the same: it can be paid in any period, and each period
+ * it is paid in is its own row with its own limit.
  */
+
 export async function getBalances(
     school_id: string,
     learner_id: string | null,

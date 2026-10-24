@@ -72,10 +72,11 @@ async function assertLearnersActive(client: PoolClient, inputs: CreateChargesWit
  * compute "charged" vs "paid". Enforcement uses the same key so the limit
  * being enforced is the same number the balance screens display.
  *
- * A ONCE_OFF fee uses the same key — it is paid once in each of the periods
- * it was set up for — with two extra rules in assertWithinLimits: it can only
- * be paid in those periods, and with no limit set it can be paid one time
- * per period.
+ * A ONCE_OFF fee uses the same key. It is not set up for particular periods -
+ * it can be paid in any of them - but whatever period it is paid in, the limit
+ * applies to that period alone: 5 of 20 paid in January leaves 15 owing for
+ * January, and paying it in June starts June's own 20. With no limit set it
+ * can be paid one time per period.
  */
 type LimitKey = {
   learner_id: string;
@@ -130,38 +131,6 @@ async function loadPeriodNames(client: PoolClient, paymentPeriodIds: number[]): 
     [paymentPeriodIds]
   );
   return new Map(result.rows.map((row) => [String(row.payment_period_id), String(row.period_name)]));
-}
-
-/**
- * The periods each once-off fee was set up for, by name. A once-off fee
- * always has at least one (repositories/school/create/createIncomeCategory.ts).
- */
-async function loadOnceOffPeriods(
-  client: PoolClient,
-  incomeCategoryIds: number[]
-): Promise<Map<string, { ids: Set<number>; names: string[] }>> {
-  const periods = new Map<string, { ids: Set<number>; names: string[] }>();
-  if (incomeCategoryIds.length === 0) return periods;
-
-  const result = await client.query(
-    `
-    SELECT icp.income_category_id, pp.payment_period_id::int AS id, pp.period_name
-    FROM income_category_periods icp
-    JOIN payment_periods pp ON pp.payment_period_id = icp.payment_period_id
-    WHERE icp.income_category_id = ANY($1::bigint[])
-    ORDER BY icp.income_category_id, pp.payment_period_id
-    `,
-    [incomeCategoryIds]
-  );
-
-  for (const row of result.rows) {
-    const key = String(row.income_category_id);
-    const entry = periods.get(key) ?? { ids: new Set<number>(), names: [] };
-    entry.ids.add(Number(row.id));
-    entry.names.push(String(row.period_name));
-    periods.set(key, entry);
-  }
-  return periods;
 }
 
 function appliesKey(income_category_id: number, input: CreateChargesWithPaymentsInput): string {
@@ -272,19 +241,17 @@ async function loadExistingPaid(client: PoolClient, keys: LimitKey[]): Promise<M
  * submission reports all of its problems at once.
  */
 async function assertWithinLimits(client: PoolClient, inputs: CreateChargesWithPaymentsInput[]): Promise<void> {
-  const lines = inputs.flatMap((input, index) =>
-    input.income_categories.map((line) => ({ index, input, line, key: limitKeyOf(input, line.income_category_id) }))
-  );
-  if (lines.length === 0) return;
+  const allLines = inputs.flatMap((input, index) => input.income_categories.map((line) => ({ index, input, line })));
+  if (allLines.length === 0) return;
 
-  const uniqueKeys = [...new Map(lines.map(({ key }) => [keyString(key), key])).values()];
-
-  const rules = await loadIncomeRules(client, [...new Set(lines.map(({ line }) => line.income_category_id))]);
+  const rules = await loadIncomeRules(client, [...new Set(allLines.map(({ line }) => line.income_category_id))]);
   const ruleFor = (income_category_id: number) => rules.get(String(income_category_id)) ?? UNKNOWN_INCOME;
   const periodNames = await loadPeriodNames(client, [...new Set(inputs.map((input) => input.payment_period_id))]);
 
+  const lines = allLines.map((entry) => ({ ...entry, key: limitKeyOf(entry.input, entry.line.income_category_id) }));
+  const uniqueKeys = [...new Map(lines.map(({ key }) => [keyString(key), key])).values()];
+
   const onceOffLines = lines.filter(({ line }) => ruleFor(line.income_category_id).onceOff);
-  const onceOffPeriods = await loadOnceOffPeriods(client, [...new Set(onceOffLines.map(({ line }) => line.income_category_id))]);
   const applicable = await loadOnceOffApplicability(
     client,
     onceOffLines.map(({ line, input }) => ({ income_category_id: line.income_category_id, input }))
@@ -301,20 +268,11 @@ async function assertWithinLimits(client: PoolClient, inputs: CreateChargesWithP
     const { limit, income_name, onceOff } = ruleFor(line.income_category_id);
     const id = keyString(key);
     const amount = Number(line.amount);
-    const periodName = periodNames.get(String(input.payment_period_id)) ?? "this period";
+    const scope = `for ${periodNames.get(String(input.payment_period_id)) ?? "this period"}`;
 
     if (onceOff) {
-      // A once-off fee belongs to the periods it was set up for, and is
-      // paid in those only.
-      const allowed = onceOffPeriods.get(String(line.income_category_id)) ?? { ids: new Set<number>(), names: [] };
-      if (!allowed.ids.has(Number(input.payment_period_id))) {
-        violations.push({
-          index,
-          field: "payment_period_id",
-          message: `${income_name} is a once-off payment for ${allowed.names.join(", ") || "its own periods"} only — it cannot be paid for ${periodName}.`,
-        });
-        continue;
-      }
+      // Payable in any period (each with its own limit); only who it
+      // applies to needs checking here.
       if (!applicable.has(appliesKey(line.income_category_id, input))) {
         violations.push({
           index,
@@ -334,7 +292,7 @@ async function assertWithinLimits(client: PoolClient, inputs: CreateChargesWithP
           violations.push({
             index,
             field: "amount",
-            message: `Payment cannot be processed. ${income_name} is a once-off payment and the learner has already paid it for ${periodName}.`,
+            message: `Payment cannot be processed. ${income_name} is a once-off payment and the learner has already paid it ${scope}.`,
           });
           continue;
         }
@@ -350,7 +308,7 @@ async function assertWithinLimits(client: PoolClient, inputs: CreateChargesWithP
       violations.push({
         index,
         field: "amount",
-        message: `Payment cannot be processed. The learner has already paid the full ${income_name} amount of ${formatCurrency(limit)} for ${periodName}.`,
+        message: `Payment cannot be processed. The learner has already paid the full ${income_name} amount of ${formatCurrency(limit)} ${scope}.`,
       });
       continue;
     }
@@ -359,7 +317,7 @@ async function assertWithinLimits(client: PoolClient, inputs: CreateChargesWithP
       violations.push({
         index,
         field: "amount",
-        message: `Payment exceeds the remaining ${income_name} balance for ${periodName}. The learner has ${formatCurrency(remaining)} remaining to pay.`,
+        message: `Payment exceeds the remaining ${income_name} balance ${scope}. The learner has ${formatCurrency(remaining)} remaining to pay.`,
       });
       continue;
     }

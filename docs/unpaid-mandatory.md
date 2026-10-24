@@ -14,6 +14,7 @@ Every income category (fee) in School Setup now carries a `priority`:
 
 - **Mandatory** — every learner it applies to is assumed to owe it, automatically, for every applicable period. No payment needs to happen first for the obligation to exist.
 - **Optional** — the opposite default. A learner is only considered "in" for an optional fee once they've actually paid toward it at least once. Nobody is assumed to owe an optional fee just by existing.
+- **Once-off** — never owed just by existing, and not set up for any particular period: it can be paid in any month, or never, and that's fine either way. In the month it is paid, its limit applies to that month: 5 of 20 paid in January appears here as 15 outstanding for January. Paying it in June as well starts June's own limit. Unlike optional fees it is never projected into later months. With no limit set it can be paid once per month and never appears here.
 
 A fee can also be scoped narrower than "every learner, every period":
 

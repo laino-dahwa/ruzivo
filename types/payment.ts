@@ -83,7 +83,8 @@ export type ObligationRow = {
   last_name: string;
   class_name: string;
   income_name: string;
-  priority: 'MANDATORY' | 'OPTIONAL';
+  /** ONCE_OFF rows appear only once something has been paid toward the fee. */
+  priority: 'MANDATORY' | 'OPTIONAL' | 'ONCE_OFF';
   period_name: string;
   academic_year_name: string;
   expected: string | null;
@@ -96,7 +97,7 @@ export type ObligationFilters = {
   class_category_id?: number | null;
   learner_id?: string | null;
   income_category_id?: number | null;
-  priority?: 'MANDATORY' | 'OPTIONAL' | null;
+  priority?: 'MANDATORY' | 'OPTIONAL' | 'ONCE_OFF' | null;
   status?: ObligationStatus | null;
   academic_year_id?: number | null;
   payment_period_id?: number | null;

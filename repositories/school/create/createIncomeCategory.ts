@@ -3,8 +3,9 @@ import { insertIncomeCategoryMembership } from "../incomeCategoryMembership";
 
 /**
  * MANDATORY and OPTIONAL feed the obligations engine (obligationsQuery.ts).
- * ONCE_OFF is outside it entirely: never projected as owed, paid once in each
- * of the specific periods it is set up for — see onceOffNormalised.
+ * ONCE_OFF is never projected as owed: it can be paid in any period, or not
+ * at all. In a period it has been paid in, its limit applies to that period
+ * and the rest of it shows as owed for that period - see onceOffNormalised.
  */
 export type IncomeCategoryPriority = "MANDATORY" | "OPTIONAL" | "ONCE_OFF";
 export type ClassApplicability = "ALL_LEARNERS" | "SPECIFIC_CLASSES" | "SPECIFIC_LEARNERS";
@@ -19,10 +20,11 @@ export class IncomeCategoryInputError extends Error {
 }
 
 /**
- * A once-off fee is always for specific periods (at least one). Who it
- * applies to — all learners, specific classes or specific learners — is kept
- * as sent, and enforced when a payment is recorded (createNewPayment.ts).
- * Other priorities pass through unchanged.
+ * A once-off fee is not tied to any period: whatever periods are sent are
+ * dropped, and it applies to all of them. Who it applies to — all learners,
+ * specific classes or specific learners — is kept as sent, and enforced when
+ * a payment is recorded (createNewPayment.ts). Other priorities pass through
+ * unchanged.
  */
 export function onceOffNormalised<
   T extends {
@@ -35,10 +37,7 @@ export function onceOffNormalised<
   },
 >(input: T): T {
   if (input.priority !== "ONCE_OFF") return input;
-  if (!input.payment_period_ids || input.payment_period_ids.length === 0) {
-    throw new IncomeCategoryInputError("Choose the period (or periods) this once-off payment is for.");
-  }
-  return { ...input, period_applicability: "SPECIFIC_PERIODS" };
+  return { ...input, period_applicability: "ALL_PERIODS", payment_period_ids: [] };
 }
 
 export type CreateIncomeCategoryInput = {

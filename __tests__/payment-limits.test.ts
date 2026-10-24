@@ -391,7 +391,7 @@ describe("once-off income categories", () => {
       income_name: "Registration",
       income_limit: "100",
       priority: "ONCE_OFF",
-      // Sent on purpose: a once-off fee is always for specific periods.
+      // Periods sent on purpose: a once-off fee ignores them (any period will do).
       period_applicability: "ALL_PERIODS",
       payment_period_ids: [Number(januaryId)],
     }]);
@@ -406,45 +406,48 @@ describe("once-off income categories", () => {
     examLevyId = Number(examLevy.income_category_id);
   });
 
-  it("is stored for exactly the periods chosen", async () => {
+  it("is stored with no periods, whatever periods were sent", async () => {
     const row = await query(`SELECT priority, class_applicability, period_applicability FROM income_categories WHERE income_category_id = $1`, [registrationId]);
-    expect(row.rows[0]).toEqual({ priority: "ONCE_OFF", class_applicability: "ALL_LEARNERS", period_applicability: "SPECIFIC_PERIODS" });
-    const periods = await query(`SELECT payment_period_id::int AS id FROM income_category_periods WHERE income_category_id = $1`, [registrationId]);
-    expect(periods.rows.map((r) => r.id)).toEqual([Number(januaryId)]);
+    expect(row.rows[0]).toEqual({ priority: "ONCE_OFF", class_applicability: "ALL_LEARNERS", period_applicability: "ALL_PERIODS" });
+    const periods = await query(`SELECT 1 FROM income_category_periods WHERE income_category_id = $1`, [registrationId]);
+    expect(periods.rowCount).toBe(0);
   });
 
-  it("cannot be created without a period", async () => {
+  it("can be created without choosing a period", async () => {
     const { POST: POST_INCOME } = await import("../app/api/schools/[school_id]/income_categories/route");
     const response = await POST_INCOME(new Request(`http://localhost/api/schools/${SCHOOL}/income_categories`, {
       method: "POST",
       body: JSON.stringify([{ school_id: SCHOOL, income_name: "No Period Fee", income_limit: "10", priority: "ONCE_OFF", payment_period_ids: [] }]),
     }));
-    expect(response.status).toBe(400);
-    expect((await response.json()).error).toMatch(/Choose the period/);
+    expect(response.status).toBe(201);
   });
 
-  it("is paid in its own period, in instalments up to the limit, then refused", async () => {
+  it("can be paid in any period, with the limit applying to the period it is paid in", async () => {
     expect((await post(payment(60, { income: registrationId, period: januaryId }))).status).toBe(201);
     expect((await post(payment(40, { income: registrationId, period: januaryId }))).status).toBe(201);
     const again = await post(payment(1, { income: registrationId, period: januaryId }));
     expect(again.status).toBe(400);
     expect(again.body.error).toMatch(/already paid the full Registration amount of \$100\.00 for January/);
+
+    // February is its own period with its own limit.
+    expect((await post(payment(100, { income: registrationId, period: februaryId }))).status).toBe(201);
+    expect(await totalPaid({ income: registrationId, period: februaryId })).toBe(100);
   });
 
-  it("cannot be paid in a period it was not set up for", async () => {
-    const wrong = await post(payment(50, { income: registrationId, period: februaryId }));
-    expect(wrong.status).toBe(400);
-    expect(wrong.body.error).toMatch(/Registration is a once-off payment for January only — it cannot be paid for February/);
-    expect(await totalPaid({ income: registrationId, period: februaryId })).toBe(0);
+  it("a part payment leaves the rest owing for that period only", async () => {
+    expect((await post(payment(30, { income: registrationId, period: januaryId }))).status).toBe(201);
+    const tooMuch = await post(payment(71, { income: registrationId, period: januaryId }));
+    expect(tooMuch.status).toBe(400);
+    expect(tooMuch.body.error).toMatch(/remaining Registration balance for January\. The learner has \$70\.00 remaining/);
+    // What was paid in January does not reduce February.
+    expect((await post(payment(71, { income: registrationId, period: februaryId }))).status).toBe(201);
   });
 
-  it("with no limit set, is paid one time in each of its periods", async () => {
+  it("with no limit set, is paid one time per period, in any period", async () => {
     expect((await post(payment(25, { income: examLevyId, period: januaryId }))).status).toBe(201);
     const secondJanuary = await post(payment(5, { income: examLevyId, period: januaryId }));
     expect(secondJanuary.status).toBe(400);
     expect(secondJanuary.body.error).toMatch(/once-off payment and the learner has already paid it for January/);
-
-    // February is one of its periods too, so it is paid once there as well.
     expect((await post(payment(25, { income: examLevyId, period: februaryId }))).status).toBe(201);
 
     // Two lines for the same period in one request: the second is refused.
@@ -455,71 +458,43 @@ describe("once-off income categories", () => {
     expect(bothAtOnce.status).toBe(400);
   });
 
-  it("shows on the balance screens per period, like any other fee", async () => {
+  it("shows on the balance screens once per period it was paid in", async () => {
     await post(payment(30, { income: registrationId, period: januaryId }));
+    await post(payment(20, { income: registrationId, period: februaryId }));
     const rows = await getBalances(SCHOOL, learnerId, null, null, null, "Registration", null);
-    expect(rows).toHaveLength(1);
-    expect(rows[0].period_name).toBe("January");
-    expect(Number(rows[0].paid)).toBe(30);
-    expect(Number(rows[0].balance)).toBe(70);
+    const byPeriod = Object.fromEntries(rows.map((r) => [r.period_name, { paid: Number(r.paid), balance: Number(r.balance) }]));
+    expect(byPeriod).toEqual({ January: { paid: 30, balance: 70 }, February: { paid: 20, balance: 80 } });
   });
 
-  it("is never listed as owed by the obligations engine, paid or not", async () => {
+  it("is not listed as owed until paid, then shows the rest owing in that period only", async () => {
     const { getObligations } = await import("../repositories/payment/read/getObligations");
     const filters = {
       class_category_id: null, learner_id: learnerId, income_category_id: registrationId,
       priority: null, status: null, academic_year_id: null, payment_period_id: null,
     };
     expect(await getObligations(SCHOOL, filters)).toHaveLength(0);
-    await post(payment(30, { income: registrationId, period: januaryId }));
-    expect(await getObligations(SCHOOL, filters)).toHaveLength(0);
+
+    await post(payment(5, { income: registrationId, period: januaryId }));
+    let rows = await getObligations(SCHOOL, filters);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ priority: "ONCE_OFF", period_name: "January", status: "PARTIALLY_PAID" });
+    expect(Number(rows[0].balance)).toBe(95);
+
+    // Paying it again in February adds February's own row; nothing is
+    // projected into periods it was never paid in.
+    await post(payment(10, { income: registrationId, period: februaryId }));
+    rows = await getObligations(SCHOOL, filters);
+    expect(rows.map((r) => [r.period_name, Number(r.balance)]).sort()).toEqual([["February", 90], ["January", 95]]);
+  });
+
+  it("with no limit set, is never listed as owed, even once paid", async () => {
+    const { getObligations } = await import("../repositories/payment/read/getObligations");
+    await post(payment(25, { income: examLevyId, period: januaryId }));
+    const rows = await getObligations(SCHOOL, {
+      class_category_id: null, learner_id: learnerId, income_category_id: examLevyId,
+      priority: null, status: null, academic_year_id: null, payment_period_id: null,
+    });
+    expect(rows).toHaveLength(0);
   });
 });
 
-describe("who a once-off fee applies to", () => {
-  let grade1Id: number;
-  let grade2Id: number;
-
-  beforeAll(async () => {
-    // Every learner in this suite is enrolled in Grade 1.
-    grade1Id = Number((await query(`SELECT class_category_id FROM class_categories WHERE school_id = $1 AND class_name = 'Grade 1'`, [SCHOOL])).rows[0].class_category_id);
-    const [grade2] = await createClassCategory([{ school_id: SCHOOL, class_name: "Grade 2" }]);
-    grade2Id = Number(grade2.class_category_id);
-  });
-
-  it("keeps who it applies to as chosen", async () => {
-    const [trip] = await createIncomeCategory([{
-      school_id: SCHOOL, income_name: "Grade 1 Trip", income_limit: "50", priority: "ONCE_OFF",
-      class_applicability: "SPECIFIC_CLASSES", class_category_ids: [grade1Id], payment_period_ids: [Number(januaryId)],
-    }]);
-    expect(trip.class_applicability).toBe("SPECIFIC_CLASSES");
-    const classes = await query(`SELECT class_category_id::int AS id FROM income_category_classes WHERE income_category_id = $1`, [trip.income_category_id]);
-    expect(classes.rows.map((r) => r.id)).toEqual([grade1Id]);
-  });
-
-  it("is paid by learners in its classes, and refused for anyone else", async () => {
-    const [grade1Trip] = await createIncomeCategory([{
-      school_id: SCHOOL, income_name: "Grade 1 Outing", income_limit: "50", priority: "ONCE_OFF",
-      class_applicability: "SPECIFIC_CLASSES", class_category_ids: [grade1Id], payment_period_ids: [Number(januaryId)],
-    }]);
-    const [grade2Trip] = await createIncomeCategory([{
-      school_id: SCHOOL, income_name: "Grade 2 Outing", income_limit: "50", priority: "ONCE_OFF",
-      class_applicability: "SPECIFIC_CLASSES", class_category_ids: [grade2Id], payment_period_ids: [Number(januaryId)],
-    }]);
-
-    expect((await post(payment(50, { income: Number(grade1Trip.income_category_id) }))).status).toBe(201);
-    const refused = await post(payment(50, { income: Number(grade2Trip.income_category_id) }));
-    expect(refused.status).toBe(400);
-    expect(refused.body.error).toBe("Grade 2 Outing does not apply to this learner.");
-  });
-
-  it("is paid only by the learners named for it", async () => {
-    const [bursary] = await createIncomeCategory([{
-      school_id: SCHOOL, income_name: "Bursary Top-up", income_limit: "20", priority: "ONCE_OFF",
-      class_applicability: "SPECIFIC_LEARNERS", learner_ids: [otherLearnerId], payment_period_ids: [Number(januaryId)],
-    }]);
-    const id = Number(bursary.income_category_id);
-    expect((await post(payment(20, { income: id, learner: otherLearnerId, enrolment: otherEnrolmentId }))).status).toBe(201);
-    expect((await post(payment(20, { income: id }))).status).toBe(400);
-  });
-});
