@@ -15,7 +15,7 @@ import { learnersApi } from '../../services/learners';
 import { schoolLogoUrl } from '../../services/logo';
 import { printHtml } from '../../services/print';
 import { PagedListFooter, usePagedList } from '../shared/paged-list';
-import type { CreateChargesWithPaymentsInput, Payment } from '../../types/payment';
+import type { CreateChargesWithPaymentsInput, CreatedChargeWithPayment, Payment } from '../../types/payment';
 import { useSchoolReferenceData } from '../reference-data/use-school-reference-data';
 import { LearnerAutocomplete } from '../learners/learner-autocomplete';
 import { SectionHeading } from '../shared/section-heading';
@@ -281,9 +281,72 @@ export function PaymentsView() {
     }
   };
 
+  /**
+   * One combined receipt per learner in a submission — several fees paid for
+   * the same learner in one go print as a single transaction, not one receipt
+   * per fee. Printed one after another (never in parallel), so at most one
+   * print dialog is ever open at a time.
+   *
+   * Runs detached from the mutation: printing only finishes once the cashier
+   * has dealt with every print dialog, and while it was awaited inside
+   * onSuccess the mutation stayed pending that whole time — so the form
+   * showed "Saving…" and refused a new payment long after this one had
+   * already been saved.
+   */
+  const printReceiptsFor = async (result: CreatedChargeWithPayment[], inputs: CreateChargesWithPaymentsInput[]) => {
+    // Let the closed dialog and the "Payment recorded" toast paint first, so
+    // starting a print job can never hold up what the cashier sees.
+    await new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
+
+    let cursor = 0;
+    for (const input of inputs) {
+      const created = result.slice(cursor, cursor + input.income_categories.length);
+      cursor += input.income_categories.length;
+      if (created.length === 0) continue;
+
+      // Reference-data ids come back from Postgres as strings (bigint
+      // columns are serialized as strings to avoid precision loss), but
+      // the submitted input's ids are real numbers (Number()-converted
+      // just above, for the API) — a strict === between them silently
+      // failed every lookup here, which is why every line printed as the
+      // generic "Fee" fallback with no period/method. Number() on the
+      // reference-data side normalizes both to the same type.
+      const learner = learnersDirectory.data?.find((l) => l.learner_id === input.learner_id);
+      const period = ref.paymentPeriods.data?.find((p) => Number(p.payment_period_id) === input.payment_period_id);
+      const year = ref.academicYears.data?.find((y) => String(y.academic_year_id) === String(input.academic_year_id));
+      const method = ref.paymentMethods.data?.find((m) => Number(m.payment_method_id) === input.payment_method_id);
+
+      const lines = created.map((entry, i) => {
+        const income = ref.incomeCategories.data?.find((c) => Number(c.income_category_id) === input.income_categories[i].income_category_id);
+        return {
+          incomeName: income?.income_name ?? 'Fee',
+          periodName: period?.period_name ?? '',
+          amountLabel: formatCurrency(entry.payment.amount),
+        };
+      });
+      const total = created.reduce((sum, entry) => sum + Number(entry.payment.amount), 0);
+
+      try {
+        await printReceipt({
+          learnerName: learner ? `${learner.first_name} ${learner.last_name}` : input.learner_id,
+          learnerId: input.learner_id,
+          className: learner?.class_name ?? '',
+          academicYearName: year?.academic_year_name ?? '',
+          methodName: method?.method_name ?? '',
+          paidAt: created[0].payment.paid_at,
+          referenceId: created[0].charge.charge_id,
+          lines,
+          totalLabel: formatCurrency(total),
+        });
+      } catch (error) {
+        toast({ title: 'Could not print receipt', description: (error as Error).message, variant: 'destructive' });
+      }
+    }
+  };
+
   const recordPayment = useMutation({
     mutationFn: (inputs: CreateChargesWithPaymentsInput[]) => paymentsApi.create(inputs),
-    onSuccess: async (result, inputs) => {
+    onSuccess: (result, inputs) => {
       const recorded = inputs.reduce((count, input) => count + input.income_categories.length, 0);
       toast({ title: recorded === 1 ? 'Payment recorded' : `${recorded} payments recorded` });
       setAddOpen(false);
@@ -292,55 +355,8 @@ export function PaymentsView() {
       setBlocks([emptyPaymentBlock(currentPeriodId, cashMethodId)]);
       queryClient.invalidateQueries({ queryKey: ['payments'] });
       queryClient.invalidateQueries({ queryKey: ['balances'] });
-
-      // One combined receipt per learner in this submission — several fees
-      // paid for the same learner in one go print as a single transaction,
-      // not one receipt per fee. Printed one after another (never in
-      // parallel), so at most one print dialog is ever open at a time.
-      let cursor = 0;
-      for (const input of inputs) {
-        const created = result.slice(cursor, cursor + input.income_categories.length);
-        cursor += input.income_categories.length;
-        if (created.length === 0) continue;
-
-        // Reference-data ids come back from Postgres as strings (bigint
-        // columns are serialized as strings to avoid precision loss), but
-        // the submitted input's ids are real numbers (Number()-converted
-        // just above, for the API) — a strict === between them silently
-        // failed every lookup here, which is why every line printed as the
-        // generic "Fee" fallback with no period/method. Number() on the
-        // reference-data side normalizes both to the same type.
-        const learner = learnersDirectory.data?.find((l) => l.learner_id === input.learner_id);
-        const period = ref.paymentPeriods.data?.find((p) => Number(p.payment_period_id) === input.payment_period_id);
-        const year = ref.academicYears.data?.find((y) => String(y.academic_year_id) === String(input.academic_year_id));
-        const method = ref.paymentMethods.data?.find((m) => Number(m.payment_method_id) === input.payment_method_id);
-
-        const lines = created.map((entry, i) => {
-          const income = ref.incomeCategories.data?.find((c) => Number(c.income_category_id) === input.income_categories[i].income_category_id);
-          return {
-            incomeName: income?.income_name ?? 'Fee',
-            periodName: period?.period_name ?? '',
-            amountLabel: formatCurrency(entry.payment.amount),
-          };
-        });
-        const total = created.reduce((sum, entry) => sum + Number(entry.payment.amount), 0);
-
-        try {
-          await printReceipt({
-            learnerName: learner ? `${learner.first_name} ${learner.last_name}` : input.learner_id,
-            learnerId: input.learner_id,
-            className: learner?.class_name ?? '',
-            academicYearName: year?.academic_year_name ?? '',
-            methodName: method?.method_name ?? '',
-            paidAt: created[0].payment.paid_at,
-            referenceId: created[0].charge.charge_id,
-            lines,
-            totalLabel: formatCurrency(total),
-          });
-        } catch (error) {
-          toast({ title: 'Could not print receipt', description: (error as Error).message, variant: 'destructive' });
-        }
-      }
+      // Deliberately not awaited — see printReceiptsFor.
+      void printReceiptsFor(result, inputs);
     },
     onError: (error) => toast({ title: 'Payment failed', description: (error as Error).message, variant: 'destructive' }),
   });

@@ -49,14 +49,32 @@ async function createDatabaseIfNotExists() {
 async function createPool() {
     await createDatabaseIfNotExists();
 
-    return new Pool({
+    const pool = new Pool({
         host: process.env.PGHOST,
         port: Number(process.env.PGPORT || 5432),
         user: process.env.PGUSER,
         password: process.env.PGPASSWORD,
         database: process.env.PGDATABASE,
         max: 10,
+        // pg's default closes a connection after 10s idle, which is shorter
+        // than it takes to fill in a form — so nearly every save paid for a
+        // brand-new connection. On Windows that means Postgres starting a
+        // whole new backend process, plus auth and a cold catalog cache,
+        // every time. Idle connections are kept open instead; there are at
+        // most `max` of them.
+        idleTimeoutMillis: 0,
+        keepAlive: true,
     });
+
+    // A long-lived idle connection can be dropped from the server side (a
+    // restart, a network blip). pg-pool discards that client itself, but the
+    // error is re-emitted here, and an unhandled 'error' event would take the
+    // whole server process down.
+    pool.on("error", (error) => {
+        console.error("Idle Postgres connection lost:", error.message);
+    });
+
+    return pool;
 }
 
 export async function getPool() {

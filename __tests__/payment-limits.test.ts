@@ -11,7 +11,7 @@ import { createLearners } from "../repositories/learner/create/addLearner";
 import { getLearners } from "../repositories/learner/read/getLearners";
 import { getBalances } from "../repositories/payment/read/getBalances";
 import { deleteLearner } from "../repositories/learner/delete/deleteLearner";
-import { query } from "../lib/db";
+import { getPool, query } from "../lib/db";
 
 // A learner owes `income_limit` for one fee, in one period, of one academic
 // year. These tests drive the real API route so the limit is enforced exactly
@@ -239,6 +239,54 @@ describe("bulk payments in a single request", () => {
     expect(status).toBe(400);
     expect(body.error).toContain("remaining");
     expect(await totalPaid()).toBe(80);
+  });
+
+  it("returns one created entry per line, in the order the lines were submitted", async () => {
+    const { status, body } = await post([
+      payment(10, { income: tuitionId }),
+      payment(20, { income: transportId }),
+      payment(30, { income: unlimitedId, learner: otherLearnerId, enrolment: otherEnrolmentId }),
+    ]);
+    expect(status).toBe(201);
+    expect(body.map((entry: { charge: { income_category_id: string } }) => String(entry.charge.income_category_id)))
+      .toEqual([tuitionId, transportId, unlimitedId].map(String));
+    expect(body.map((entry: { payment: { amount: string } }) => Number(entry.payment.amount))).toEqual([10, 20, 30]);
+    expect(body[2].charge.learner_id).toBe(otherLearnerId);
+    for (const entry of body) {
+      expect(entry.allocation.charge_id).toBe(entry.charge.charge_id);
+      expect(entry.allocation.payment_id).toBe(entry.payment.payment_id);
+    }
+  });
+
+  it("a payment waits for a concurrent one on the same fee, then counts it", async () => {
+    // Stands in for another request that is mid-transaction: it holds the
+    // same advisory lock the repository takes (same key format) and has
+    // written 60 without committing. Without the lock, the API call below
+    // would read 0 paid and accept another 60; with it, the call waits, then
+    // sees the committed 60 and refuses.
+    const pool = await getPool();
+    const other = await pool.connect();
+    try {
+      await other.query("BEGIN");
+      await other.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`${learnerId}|${tuitionId}|${januaryId}|${yearId}`]);
+      const { rows: [charge] } = await other.query(
+        `INSERT INTO charges (learner_id, enrolment_id, income_category_id, payment_period_id, academic_year_id) VALUES ($1, $2, $3, $4, $5) RETURNING charge_id`,
+        [learnerId, enrolmentId, tuitionId, januaryId, yearId]
+      );
+      const { rows: [paid] } = await other.query(`INSERT INTO payments (amount, payment_method_id) VALUES (60, $1) RETURNING payment_id`, [methodId]);
+      await other.query(`INSERT INTO payment_allocations (payment_id, charge_id) VALUES ($1, $2)`, [paid.payment_id, charge.charge_id]);
+
+      const racing = post(payment(60));
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      await other.query("COMMIT");
+
+      const { status, body } = await racing;
+      expect(status).toBe(400);
+      expect(body.error).toContain("$40.00 remaining");
+    } finally {
+      other.release();
+    }
+    expect(await totalPaid()).toBe(60);
   });
 
   it("does not block unrelated learners in the same bulk request", async () => {
