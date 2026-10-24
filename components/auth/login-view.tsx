@@ -6,6 +6,7 @@ import { KeyRound, LogIn } from 'lucide-react';
 import { authApi, type Actor } from '../../services/auth';
 import { LANDING_ROUTE } from '../../lib/auth/permissions';
 import { MIN_PASSWORD_LENGTH } from '../../lib/auth/passwordPolicy';
+import { PasswordInput } from '../shared/password-input';
 import { AuthCard } from './auth-card';
 import { SecurityKeyReveal } from './security-key-reveal';
 
@@ -101,13 +102,13 @@ export function LoginView() {
 
           <div>
             <label htmlFor="recover-new-password" className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">New password</label>
-            <input id="recover-new-password" type="password" autoComplete="new-password" required value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="field h-10 text-sm" data-testid="input-recover-new-password" />
+            <PasswordInput id="recover-new-password" autoComplete="new-password" required value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="field h-10 text-sm" data-testid="input-recover-new-password" />
             <p className="mt-1 text-[11px] text-muted-foreground">At least {MIN_PASSWORD_LENGTH} characters.</p>
           </div>
 
           <div>
             <label htmlFor="recover-confirm" className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Confirm new password</label>
-            <input id="recover-confirm" type="password" autoComplete="new-password" required value={confirm} onChange={(e) => setConfirm(e.target.value)} className="field h-10 text-sm" data-testid="input-recover-confirm" />
+            <PasswordInput id="recover-confirm" autoComplete="new-password" required value={confirm} onChange={(e) => setConfirm(e.target.value)} className="field h-10 text-sm" data-testid="input-recover-confirm" />
           </div>
 
           {error && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive" data-testid="text-recover-error">{error}</p>}
@@ -146,9 +147,8 @@ export function LoginView() {
 
         <div>
           <label htmlFor="password" className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Password</label>
-          <input
+          <PasswordInput
             id="password"
-            type="password"
             autoComplete="current-password"
             required
             value={password}
