@@ -13,14 +13,14 @@ const APP_BACKGROUND = '#f5f1ea';
  * actually shows for an installed app; this only matters for `npm run
  * electron:dev` and the production flow's pre-launch setup window.
  *
- * Regenerate this file from public/branding/logo/logo.png via
- * `node scripts/generate-branding-icons.mjs` if the logo ever changes.
+ * Regenerate public/favicon.ico from public/favicon.png via
+ * `node scripts/generate-branding-icons.mjs` if the icon ever changes.
  */
 function defaultIconPath(): string {
   const root = app.isPackaged ? process.resourcesPath : path.join(__dirname, '..');
   const relative = app.isPackaged
-    ? path.join('.next', 'standalone', 'public', 'branding', 'logo', 'logo.ico')
-    : path.join('public', 'branding', 'logo', 'logo.ico');
+    ? path.join('.next', 'standalone', 'public', 'favicon.ico')
+    : path.join('public', 'favicon.ico');
   return path.join(root, relative);
 }
 

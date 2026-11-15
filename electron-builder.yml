@@ -1,8 +1,8 @@
 appId: com.ruzivo.desktop
 productName: Kundima Learn
-# Regenerate from public/branding/desktop/icon.png via
+# Regenerate from public/favicon.png via
 # `node scripts/generate-branding-icons.mjs` if the icon ever changes.
-icon: build/icon.ico
+icon: public/favicon.ico
 directories:
   output: release
   buildResources: build

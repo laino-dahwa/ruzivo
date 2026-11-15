@@ -16,6 +16,15 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Kundima Learn",
   description: "School finance office — payments, expenses, and reporting.",
+  // Both files live in public/ — favicon.ico is generated from favicon.png by
+  // scripts/generate-branding-icons.mjs.
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/favicon.png", type: "image/png" },
+    ],
+    apple: "/favicon.png",
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

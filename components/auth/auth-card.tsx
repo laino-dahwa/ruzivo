@@ -12,7 +12,7 @@ export function AuthCard({ title, detail, children }: { title: string; detail: s
         <div className="mb-6 flex flex-col items-center text-center">
           <span className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl bg-sidebar">
             {/* eslint-disable-next-line @next/next/no-img-element -- matches the sidebar brand, which is also a plain img */}
-            <img src="/branding/logo/logo.png" alt="" className="h-full w-full object-contain" />
+            <img src="/favicon.png" alt="" className="h-full w-full object-contain" />
           </span>
           <h1 className="mt-4 text-lg font-semibold text-foreground">{title}</h1>
           <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
