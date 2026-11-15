@@ -371,7 +371,7 @@ app.whenReady().then(async () => {
     // Down before the dialog, or a "please wait" window sits behind an error
     // saying the opposite.
     closeSplash();
-    dialog.showErrorBox('SSV Admin failed to start', error instanceof Error ? error.message : String(error));
+    dialog.showErrorBox('Kundima Learn failed to start', error instanceof Error ? error.message : String(error));
     app.quit();
   }
 

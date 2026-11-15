@@ -60,7 +60,7 @@ const SPLASH_HTML = `<!doctype html>
 </style>
 </head>
 <body>
-  <div class="name">SSV Admin</div>
+  <div class="name">Kundima Learn</div>
   <div class="status" id="status">Starting&hellip;</div>
   <div class="track"><div class="bar"></div></div>
   <script>

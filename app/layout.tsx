@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "SSV Admin",
+  title: "Kundima Learn",
   description: "School finance office — payments, expenses, and reporting.",
 };
 

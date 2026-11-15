@@ -48,7 +48,7 @@ export async function GET(request: Request, { params }: Params) {
         ]);
 
         const pdf = await generateCombinedReportPdf({
-            appName: "SSV Admin",
+            appName: "Kundima Learn",
             schoolName: schools[0]?.school_name ?? school_id,
             logo: logo?.data ?? null,
             reportTitle: "Financial Report",

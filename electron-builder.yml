@@ -1,7 +1,7 @@
 appId: com.ruzivo.desktop
-productName: SSV Admin
-# Regenerate from public/branding/logo/logo.png via
-# `node scripts/generate-branding-icons.mjs` if the logo ever changes.
+productName: Kundima Learn
+# Regenerate from public/branding/desktop/icon.png via
+# `node scripts/generate-branding-icons.mjs` if the icon ever changes.
 icon: build/icon.ico
 directories:
   output: release

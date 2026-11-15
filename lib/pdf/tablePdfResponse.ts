@@ -26,7 +26,7 @@ export async function tablePdfResponse(options: TablePdfOptions): Promise<NextRe
     const generatedOn = localDateKey();
 
     const pdf = await generateReportPdf({
-        appName: "SSV Admin",
+        appName: "Kundima Learn",
         schoolName: options.schoolName,
         reportTitle: options.title,
         generatedAtLabel: formatDateLabel(generatedOn),

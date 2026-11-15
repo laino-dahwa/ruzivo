@@ -35,7 +35,7 @@ export async function GET(request: Request, { params }: Params) {
             const schoolName = schools[0]?.school_name ?? school_id;
 
             const pdf = await generateReportPdf({
-                appName: "SSV Admin",
+                appName: "Kundima Learn",
                 schoolName,
                 logo: logo?.data ?? null,
                 reportTitle: "Payments Report",
