@@ -66,7 +66,7 @@ const validDay = (value: string | null) => (value && /^\d{4}-\d{2}-\d{2}$/.test(
 
 // ── Layout ──────────────────────────────────────────────────────────────────
 
-const STYLE = `
+export const STYLE = `
 :root{--bg:#f6f5f2;--card:#fff;--ink:#1c1b19;--muted:#6b6862;--line:#e4e1da;--accent:#2f6b4f;--accent-soft:#e3efe8;--warn:#9a5b13;--warn-soft:#f8ecd9;--bad:#a33a2c;--bad-soft:#f7e2de}
 @media (prefers-color-scheme:dark){:root{--bg:#141412;--card:#1d1c1a;--ink:#ecebe7;--muted:#a19d95;--line:#2f2d29;--accent:#7cc39d;--accent-soft:#1f3328;--warn:#e0a85a;--warn-soft:#3a2c18;--bad:#ec8b7d;--bad-soft:#3d211d}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
@@ -101,7 +101,9 @@ function page(opts: { title: string; active: string; school: Row | null; schools
 <title>${esc(opts.title)} · ${esc(s?.school_name ?? 'School')}</title><meta name="robots" content="noindex"><style>${STYLE}</style></head><body>
 <header><div class="bar"><a class="brand" href="/${q}">${s ? `<img src="/logo/${encodeURIComponent(String(s.school_id))}" alt="" onerror="this.remove()">` : ''}${esc(s?.school_name ?? 'School')}</a>
 <nav>${link('/', 'Overview', 'home')}${link('/learners', 'Learners', 'learners')}${link('/payments', 'Payments', 'payments')}${link('/expenses', 'Expenses', 'expenses')}${link('/staff', 'Staff', 'staff')}</nav>
-${switcher}<span class="who">${esc(opts.viewer.email)}</span></div></header>
+${switcher}<span class="who">${esc(opts.viewer.email)}</span>${
+    opts.viewer.via === 'password' ? '<form method="post" action="/logout"><button type="submit">Sign out</button></form>' : ''
+  }</div></header>
 <main>${opts.body}<p class="foot">Read-only copy. Last updated from the school computer ${when(opts.lastSync, opts.env)}.</p></main></body></html>`;
 }
 

@@ -36,9 +36,19 @@ npx wrangler secret put LINK_CODE          # a long random phrase, 12+ character
 npm run deploy                             # prints the address, e.g. https://ruzivo-cloud.<you>.workers.dev
 ```
 
-### Protect the website with Cloudflare Access (required)
+### Protect the website (required)
 
-The website shows learners' details and staff salaries. **It refuses every page until Access is set up.** It checks the Access token's signature itself, so a misconfigured route can't expose data.
+The website shows learners' details and staff salaries, so **it refuses every page until a sign-in is set up**. There are two options, and you can use both.
+
+**Option A: a website password (simplest).**
+
+```sh
+npx wrangler secret put SITE_PASSWORD
+```
+
+Choose a password of 10 or more characters. Visitors get a sign-in page, and a correct password keeps them signed in for 12 hours. After 10 wrong tries, that connection is locked out for 15 minutes. Changing the password signs everyone out. This needs `d1/migrations/0002_login_failures.sql`, which `npm run db:migrate` applies.
+
+**Option B: Cloudflare Access (named people, sign-in by email code).** The Worker checks the Access token's signature itself, so a misconfigured route can't expose data.
 
 1. Cloudflare dashboard → **Zero Trust** → **Access** → **Applications** → **Add an application** → **Self-hosted**.
    - Domain: the Worker's address.

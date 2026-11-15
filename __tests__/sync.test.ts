@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createServer, type Server } from "node:http";
-import { readFile, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { readFile, readdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -20,6 +20,7 @@ import { runSync, signBody, SyncError, type SyncLink } from "../electron/sync/en
 import { handleBatch, handleLink, resetColumnCache, type Database, type Statement } from "../cloud/src/sync";
 import { renderSite } from "../cloud/src/site";
 import { verifyAccess } from "../cloud/src/access";
+import { handleLogin, sessionViewer } from "../cloud/src/password";
 import { createBackup } from "../electron/backup/create-backup";
 import { readBackup } from "../electron/backup/read-backup";
 import { restoreBackup, type MigrateFn } from "../electron/backup/restore-backup";
@@ -121,7 +122,7 @@ describe("website access", () => {
   it("lets in a valid token, and nothing else", async () => {
     const token = await setup();
     const good = await token({ aud: ["aud-123"], exp: exp(), email: "head@school", iss: "https://school.cloudflareaccess.com" });
-    expect(await verifyAccess(request(good), env)).toEqual({ email: "head@school" });
+    expect(await verifyAccess(request(good), env)).toEqual({ email: "head@school", via: "access" });
 
     expect(await verifyAccess(request(), env)).toBeNull();
     expect(await verifyAccess(request(await token({ aud: ["other-app"], exp: exp() })), env)).toBeNull();
@@ -137,7 +138,7 @@ describe("website access", () => {
     expect(await verifyAccess(request(good), {})).toBeNull();
     // The local-development switch only works on localhost.
     expect(await verifyAccess(request(), { DEV_ALLOW_UNAUTHENTICATED: "true" })).toBeNull();
-    expect(await verifyAccess(new Request("http://localhost:8787/"), { DEV_ALLOW_UNAUTHENTICATED: "true" })).toEqual({ email: "local developer" });
+    expect(await verifyAccess(new Request("http://localhost:8787/"), { DEV_ALLOW_UNAUTHENTICATED: "true" })).toEqual({ email: "local developer", via: "local" });
   });
 });
 
@@ -146,7 +147,7 @@ describe("website access", () => {
 
 const DB_NAME = "ruzivo_sync_test";
 const MIGRATIONS_DIR = path.resolve(__dirname, "../migrations");
-const D1_SCHEMA = path.resolve(__dirname, "../cloud/d1/migrations/0001_initial.sql");
+const D1_MIGRATIONS = path.resolve(__dirname, "../cloud/d1/migrations");
 const LINK_CODE = "test-link-code-0123456789";
 
 const connection = (database: string) => ({
@@ -314,7 +315,9 @@ beforeAll(async () => {
 
   sqlite = new DatabaseSync(":memory:");
   sqlite.exec("PRAGMA foreign_keys = ON");
-  sqlite.exec(await readFile(D1_SCHEMA, "utf8"));
+  for (const file of (await readdir(D1_MIGRATIONS)).filter((f) => f.endsWith(".sql")).sort()) {
+    sqlite.exec(await readFile(path.join(D1_MIGRATIONS, file), "utf8"));
+  }
   d1 = new SqliteD1(sqlite);
   resetColumnCache();
   await startWorker();
@@ -444,6 +447,41 @@ describe("syncing to the Worker", () => {
     const list = await (await renderSite(new Request("https://site.test/learners"), d1, {}, { email: "v" })).text();
     expect(list).not.toContain("<script>x");
     expect(list).toContain("&lt;script&gt;x");
+  });
+
+  it("signs in with the website password, and slows down guessing", async () => {
+    const env = { SITE_PASSWORD: "correct horse battery" };
+    const login = (password: string, ip = "198.51.100.7") =>
+      handleLogin(
+        new Request("https://site.test/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded", "CF-Connecting-IP": ip },
+          body: new URLSearchParams({ password }),
+        }),
+        env,
+        d1
+      );
+
+    const ok = await login("correct horse battery");
+    expect(ok.status).toBe(303);
+    const cookie = ok.headers.get("Set-Cookie")!;
+    expect(cookie).toMatch(/HttpOnly/);
+    expect(cookie).toMatch(/Secure/);
+    const session = cookie.split(";")[0];
+    expect(await sessionViewer(new Request("https://site.test/", { headers: { Cookie: session } }), env)).toMatchObject({ via: "password" });
+
+    // A forged, expired or old-password session gets nothing.
+    const [expires, signature] = session.split("=")[1].split(".");
+    const forged = `ruzivo_session=${Number(expires) + 99999}.${signature}`;
+    expect(await sessionViewer(new Request("https://site.test/", { headers: { Cookie: forged } }), env)).toBeNull();
+    expect(await sessionViewer(new Request("https://site.test/", { headers: { Cookie: session } }), { SITE_PASSWORD: "a different password" })).toBeNull();
+    expect(await sessionViewer(new Request("https://site.test/"), env)).toBeNull();
+    expect(await sessionViewer(new Request("https://site.test/", { headers: { Cookie: session } }), { SITE_PASSWORD: "short" })).toBeNull();
+
+    for (let i = 0; i < 10; i++) expect((await login("guess" + i)).status).toBe(401);
+    // Locked out now, even with the right password, but only this connection.
+    expect((await login("correct horse battery")).status).toBe(429);
+    expect((await login("correct horse battery", "203.0.113.9")).status).toBe(303);
   });
 
   it("after a restore, resends everything and removes rows the restore took away", async () => {

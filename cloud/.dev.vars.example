@@ -2,3 +2,4 @@
 # Lets http://localhost skip Cloudflare Access; ignored on any other hostname.
 DEV_ALLOW_UNAUTHENTICATED=true
 LINK_CODE=local-link-code-change-me
+SITE_PASSWORD=local-site-password

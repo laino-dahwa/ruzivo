@@ -18,7 +18,8 @@ export type AccessEnv = {
   DEV_ALLOW_UNAUTHENTICATED?: string;
 };
 
-export type Viewer = { email: string };
+/** Who is looking, and how they got in ('password' viewers get a Sign out button). */
+export type Viewer = { email: string; via?: 'access' | 'password' | 'local' };
 
 type Jwk = JsonWebKey & { kid?: string };
 let cachedKeys: { domain: string; keys: Jwk[]; fetchedAt: number } | null = null;
@@ -43,7 +44,7 @@ async function teamKeys(domain: string, refresh = false): Promise<Jwk[]> {
 export async function verifyAccess(request: Request, env: AccessEnv): Promise<Viewer | null> {
   const local = new URL(request.url).hostname;
   if (env.DEV_ALLOW_UNAUTHENTICATED === 'true' && (local === 'localhost' || local === '127.0.0.1')) {
-    return { email: 'local developer' };
+    return { email: 'local developer', via: 'local' };
   }
   const domain = env.ACCESS_TEAM_DOMAIN?.replace(/^https?:\/\//, '').replace(/\/$/, '');
   if (!domain || !env.ACCESS_AUD) return null;
@@ -87,5 +88,5 @@ export async function verifyAccess(request: Request, env: AccessEnv): Promise<Vi
   if (typeof payload.nbf === 'number' && payload.nbf > nowSeconds + 60) return null;
   if (payload.iss && payload.iss !== `https://${domain}`) return null;
 
-  return { email: payload.email ?? 'signed in' };
+  return { email: payload.email ?? 'signed in', via: 'access' };
 }
