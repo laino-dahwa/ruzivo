@@ -29,9 +29,19 @@ interface BackupBridge {
   showLast(): Promise<void>;
 }
 
+// Results are passed straight through from electron/sync/ipc.ts; shapes in
+// lib/platform/index.ts (SyncStatus etc.).
+interface SyncBridge {
+  status(): Promise<unknown>;
+  syncNow(): Promise<unknown>;
+  link(input: { workerUrl: string; linkCode: string; password: string }): Promise<unknown>;
+  unlink(): Promise<unknown>;
+}
+
 interface DesktopBridge {
   readonly isDesktop: true;
   backup: BackupBridge;
+  sync: SyncBridge;
   getAppVersion(): Promise<string>;
   saveFile(suggestedName: string, data: Uint8Array): Promise<void>;
   checkForUpdates(): void;
@@ -49,6 +59,12 @@ const bridge: DesktopBridge = {
     choose: (mode) => ipcRenderer.invoke('backup:choose', mode),
     restore: (input) => ipcRenderer.invoke('backup:restore', input),
     showLast: () => ipcRenderer.invoke('backup:show-last'),
+  },
+  sync: {
+    status: () => ipcRenderer.invoke('sync:status'),
+    syncNow: () => ipcRenderer.invoke('sync:now'),
+    link: (input) => ipcRenderer.invoke('sync:link', input),
+    unlink: () => ipcRenderer.invoke('sync:unlink'),
   },
   getAppVersion: () => ipcRenderer.invoke('app:get-version'),
   saveFile: (suggestedName, data) => ipcRenderer.invoke('dialog:save-file', { suggestedName, data }),

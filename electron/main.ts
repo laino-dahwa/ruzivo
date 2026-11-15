@@ -13,6 +13,7 @@ import { closeSplash, openSplash, setSplashStatus } from './splash';
 import { checkForUpdates, initAutoUpdater, quitAndInstallUpdate } from './updater';
 import { discardQueuedReceipts, RECEIPT_JOB_NAME, scheduleStuckReceiptCleanup } from './print-queue';
 import { registerBackupIpc } from './backup/ipc';
+import { registerSyncIpc } from './sync/ipc';
 
 // Set RUZIVO_FORCE_PRODUCTION=1 to exercise the packaged-app startup path
 // (Postgres setup screen -> migrations -> spawned standalone server) during
@@ -59,6 +60,15 @@ function devDbConfig(): (DesktopDbConfig & { password: string }) | null {
   };
 }
 
+// Sends changes to the school's cloud website, if this computer is linked to
+// one (electron/sync/). Waits while a migration, backup or restore runs.
+const cloudSync = registerSyncIpc({
+  getMainWindow: () => mainWindow,
+  getAppOrigin: () => appOrigin,
+  getDbConfig: () => activeDbConfig,
+  isBusy: () => isMigratingOrBackingUp,
+});
+
 registerBackupIpc({
   getMainWindow: () => mainWindow,
   getAppOrigin: () => appOrigin,
@@ -67,6 +77,7 @@ registerBackupIpc({
   setBusy: (busy) => {
     isMigratingOrBackingUp = busy;
   },
+  onDataSaved: (event) => cloudSync.requestRun(event),
 });
 
 ipcMain.handle('app:get-version', () => app.getVersion());
@@ -384,6 +395,7 @@ app.whenReady().then(async () => {
 });
 
 async function shutdown(): Promise<void> {
+  cloudSync.stop();
   stopNextServer();
   if (ownsEmbeddedPostgres) {
     await stopEmbeddedPostgres();

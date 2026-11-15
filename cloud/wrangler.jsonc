@@ -1,0 +1,29 @@
+{
+  // Ruzivo cloud mirror: sync endpoint + read-only website (see README.md).
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ruzivo-cloud",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+
+  "vars": {
+    // The school's time zone, for "today" and dates on the website.
+    "TIMEZONE": "Africa/Harare",
+    // From Zero Trust → Access → Applications → your app (see README.md).
+    "ACCESS_TEAM_DOMAIN": "",
+    "ACCESS_AUD": ""
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "ruzivo",
+      // Replace with the id `wrangler d1 create ruzivo` prints.
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "d1/migrations"
+    }
+  ],
+
+  "r2_buckets": [{ "binding": "LOGOS", "bucket_name": "ruzivo-logos" }]
+}

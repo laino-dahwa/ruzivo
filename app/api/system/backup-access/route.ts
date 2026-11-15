@@ -12,8 +12,10 @@ export const runtime = "nodejs";
  * person signed in to the window may do so. It forwards the window's own
  * session cookie, so this is the same check every other admin action gets.
  *
- * A restore replaces every school's data, so it also re-asks for the
- * person's password.
+ * A restore replaces every school's data, and linking the computer to the
+ * cloud website ("sync-link") sends all of it off this computer, so both
+ * also re-ask for the person's password. "backup" also covers viewing the
+ * cloud sync status and syncing now.
  */
 export async function POST(request: Request) {
   try {
@@ -24,11 +26,11 @@ export async function POST(request: Request) {
 
     const body = await request.json().catch(() => null);
     const purpose = body?.purpose;
-    if (purpose !== "backup" && purpose !== "restore") {
+    if (purpose !== "backup" && purpose !== "restore" && purpose !== "sync-link") {
       return NextResponse.json({ error: "Unknown purpose" }, { status: 400 });
     }
 
-    if (purpose === "restore") {
+    if (purpose === "restore" || purpose === "sync-link") {
       const password = typeof body?.password === "string" ? body.password : "";
       const stored = await getPasswordHash(auth.actor.employee_id);
       if (!stored || !verifyPassword(password, stored)) {

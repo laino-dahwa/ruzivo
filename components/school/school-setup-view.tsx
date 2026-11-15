@@ -23,6 +23,7 @@ import { SectionHeading } from '../shared/section-heading';
 import { NoSchoolNotice } from '../shared/no-school-notice';
 import { SchoolLogoCard } from './school-logo-card';
 import { BackupCard } from './backup-card';
+import { SyncCard } from './sync-card';
 import { EmployeesCard } from './employees-card';
 import { IncomeCategoriesCard } from './income-categories-card';
 import { ErrorNotice } from '../shared/error-notice';
@@ -88,6 +89,7 @@ export function SchoolSetupView() {
       <SectionHeading eyebrow="Setup" title="School setup" detail="Create a school, or switch to an existing one, then manage the reference data required to add learners and payments." />
 
       <div className="mb-6"><BackupCard /></div>
+      <div className="mb-6 empty:hidden"><SyncCard /></div>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="rounded-2xl border border-border/80 bg-card p-5">

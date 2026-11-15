@@ -74,9 +74,47 @@ export interface BackupBridge {
   showLast(): Promise<void>;
 }
 
+export type SyncFailure = { ok: false; error: string };
+
+export type SyncLinkInfo = { workerUrl: string; installId: string; linkedAt: string; linkedBy: string };
+
+export type SyncStatus =
+  | {
+      ok: true;
+      /** Null while this computer is not linked to a website. */
+      linked: SyncLinkInfo | null;
+      running: boolean;
+      /** Changes waiting to be sent. */
+      pending: number;
+      needsFullSync: boolean;
+      lastSuccessAt: string | null;
+      lastFullSyncAt: string | null;
+      lastError: string | null;
+      lastErrorAt: string | null;
+    }
+  | SyncFailure;
+
+export type SyncRun =
+  | { ok: true; result: { mode: 'delta' | 'full' | 'idle'; rows: number; batches: number; pending: number } | null }
+  | SyncFailure;
+
+/**
+ * Sending this computer's data to the school's read-only cloud website
+ * (electron/sync/). Runs by itself every few minutes once linked.
+ */
+export interface SyncBridge {
+  status(): Promise<SyncStatus>;
+  syncNow(): Promise<SyncRun>;
+  /** Linking sends everything off this computer, so it re-asks for the password. */
+  link(input: { workerUrl: string; linkCode: string; password: string }): Promise<{ ok: true; linked: SyncLinkInfo } | SyncFailure>;
+  unlink(): Promise<{ ok: true } | SyncFailure>;
+}
+
 export interface DesktopBridge {
   /** Absent in desktop builds older than the backup feature. */
   backup?: BackupBridge;
+  /** Absent in desktop builds older than the cloud website sync. */
+  sync?: SyncBridge;
   readonly isDesktop: true;
   getAppVersion(): Promise<string>;
   /** Hands bytes to a native "Save As" dialog instead of a browser download. */

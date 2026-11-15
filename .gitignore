@@ -50,3 +50,11 @@ next-env.d.ts
 # electron
 /dist-electron/
 /release/
+
+# D1 import output (personal data from a backup)
+/d1-import/
+
+# Cloudflare Worker (cloud/)
+/cloud/node_modules/
+/cloud/.wrangler/
+/cloud/.dev.vars

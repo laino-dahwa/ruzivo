@@ -1,7 +1,7 @@
 'use client';
 
 import { useSyncExternalStore } from 'react';
-import { getDesktopBridge, type BackupBridge } from '../../lib/platform';
+import { getDesktopBridge, type BackupBridge, type SyncBridge } from '../../lib/platform';
 
 const noSubscription = () => () => {};
 
@@ -12,6 +12,11 @@ const noSubscription = () => () => {};
  */
 export function useBackupBridge(): BackupBridge | null {
   return useSyncExternalStore(noSubscription, () => getDesktopBridge()?.backup ?? null, () => null);
+}
+
+/** The desktop app's cloud-website sync bridge, or null on the web and in older desktop builds. */
+export function useSyncBridge(): SyncBridge | null {
+  return useSyncExternalStore(noSubscription, () => getDesktopBridge()?.sync ?? null, () => null);
 }
 
 /** A full page load, not a client-side route change: after a restore every cached screen is stale. */

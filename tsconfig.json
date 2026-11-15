@@ -35,5 +35,5 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
 , "app/api/schools/[school_id]/route.ts", "repositories/school/read/getSchool.ts", "app/api/schools/[school_id]/academic_years/route.ts"  ],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "cloud"]
 }

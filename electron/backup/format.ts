@@ -30,8 +30,10 @@ export const DATA_DIR = 'data';
  * Never backed up. Migrations are recorded in the manifest instead (they say
  * which schema the rows belong to), and sessions are who is signed in right
  * now - restoring them would sign people in on a computer they never used.
+ * sync_outbox/sync_state describe this computer's link to the cloud website
+ * (electron/sync/), not school data; a restore asks for a full sync instead.
  */
-export const EXCLUDED_TABLES = ['pgmigrations', 'sessions'] as const;
+export const EXCLUDED_TABLES = ['pgmigrations', 'sessions', 'sync_outbox', 'sync_state'] as const;
 
 export type BackupTableEntry = {
   name: string;

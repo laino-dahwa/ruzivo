@@ -185,6 +185,17 @@ async function replaceLiveData(pool: Pool): Promise<RestoreResult> {
       await client.query('SELECT setval($1::regclass, $2::bigint, $3)', [qualified('public', name), position.rows[0].last_value, position.rows[0].is_called]);
     }
 
+    // Every row just changed, so the cloud mirror (electron/sync/) needs a
+    // full resync rather than the per-row changes the copy above queued.
+    const syncTables = await client.query("SELECT to_regclass('public.sync_outbox') IS NOT NULL AS ok");
+    if (syncTables.rows[0]?.ok) {
+      await client.query('DELETE FROM public.sync_outbox');
+      await client.query(
+        `INSERT INTO public.sync_state (key, value, updated_at) VALUES ('needs_full_sync', 'true', CURRENT_TIMESTAMP)
+         ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+      );
+    }
+
     await client.query('COMMIT');
     return { tables: copied.length, rows };
   } catch (error) {

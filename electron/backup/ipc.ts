@@ -2,8 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, readdirSync, rmSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { app, dialog, ipcMain, shell, type BrowserWindow, type IpcMainInvokeEvent } from 'electron';
+import { app, dialog, ipcMain, shell, type BrowserWindow } from 'electron';
 import { Pool } from 'pg';
+import { createAppAccess, type Actor, type Failure } from '../app-access';
 import type { DesktopDbConfig } from '../config-store';
 import { migrateSchema } from '../migrations';
 import { createBackup } from './create-backup';
@@ -21,10 +22,9 @@ export type BackupIpcDeps = {
   migrationsDir: string;
   /** Keeps an update from restarting the app mid-backup (see updater.ts). */
   setBusy(busy: boolean): void;
+  /** Called after a backup is saved or a restore finishes (the cloud sync runs then). */
+  onDataSaved?(event: 'backup' | 'restore'): void;
 };
-
-type Actor = { employee_id: number | null; label: string; school_id: string | null };
-type Failure = { ok: false; error: string };
 
 type LastBackup = { path: string; createdAt: string; createdBy: string | null; sizeBytes: number; tables: number };
 
@@ -103,41 +103,7 @@ export function registerBackupIpc(deps: BackupIpcDeps): void {
   // process an arbitrary path to load.
   const selections = new Map<string, { path: string; manifest: BackupManifest }>();
   let busy = false;
-
-  /** Only the app's own main window, showing the app's own pages, may ask. */
-  function fromAppWindow(event: IpcMainInvokeEvent): boolean {
-    const window = deps.getMainWindow();
-    const origin = deps.getAppOrigin();
-    if (!window || !origin || event.sender !== window.webContents) return false;
-    try {
-      return new URL(event.senderFrame?.url ?? '').origin === origin;
-    } catch {
-      return false;
-    }
-  }
-
-  /**
-   * Asks the app's own server whether the person signed in to the window may
-   * back up / restore, by forwarding the window's session cookie - the same
-   * check, and the same audit identity, as every other admin action.
-   */
-  async function authorise(purpose: 'backup' | 'restore', password?: string): Promise<{ ok: true; actor: Actor } | Failure> {
-    const window = deps.getMainWindow();
-    const origin = deps.getAppOrigin();
-    if (!window || !origin) return { ok: false, error: 'The app is not ready yet.' };
-
-    const cookies = await window.webContents.session.cookies.get({ url: origin });
-    const response = await fetch(`${origin}/api/system/backup-access`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', cookie: cookies.map((c) => `${c.name}=${c.value}`).join('; ') },
-      body: JSON.stringify({ purpose, password }),
-    });
-    const body = (await response.json().catch(() => ({}))) as { error?: string; actor?: Actor };
-    if (!response.ok) {
-      return { ok: false, error: body?.error ?? (response.status === 403 ? 'Only an administrator can do this.' : 'Please sign in again.') };
-    }
-    return { ok: true, actor: body.actor as Actor };
-  }
+  const { fromAppWindow, authorise } = createAppAccess(deps);
 
   /**
    * A brand-new install - no administrator yet - may restore without signing
@@ -207,6 +173,7 @@ export function registerBackupIpc(deps: BackupIpcDeps): void {
             tables: result.manifest.tables.length,
           });
           await writeAudit(pool, auth.actor, 'system.backup', `Backed up all data to ${result.path}`, { path: result.path, counts: result.manifest.summary.counts });
+          deps.onDataSaved?.('backup');
           return {
             ok: true as const,
             path: result.path,
@@ -320,6 +287,7 @@ export function registerBackupIpc(deps: BackupIpcDeps): void {
             `Replaced all data with the backup made ${manifest.createdAt} by ${manifest.createdBy ?? 'unknown'} (restored by ${actor.label})`,
             { from: selection.path, safetyCopy: safety.path, rows: result.rows }
           );
+          deps.onDataSaved?.('restore');
           return { ok: true as const, safetyCopyPath: safety.path };
         })
       );

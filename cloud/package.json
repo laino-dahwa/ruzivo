@@ -1,0 +1,18 @@
+{
+  "name": "ruzivo-cloud",
+  "private": true,
+  "description": "Cloudflare Worker: receives the Ruzivo desktop sync into D1 and serves the read-only website.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "db:migrate:local": "wrangler d1 migrations apply ruzivo --local",
+    "db:migrate": "wrangler d1 migrations apply ruzivo --remote"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261113.1",
+    "@types/node": "^20",
+    "typescript": "^5",
+    "wrangler": "^4.45.0"
+  }
+}

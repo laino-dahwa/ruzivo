@@ -1,0 +1,4 @@
+# Local development only (`wrangler dev`). Copy to .dev.vars, which is git-ignored.
+# Lets http://localhost skip Cloudflare Access; ignored on any other hostname.
+DEV_ALLOW_UNAUTHENTICATED=true
+LINK_CODE=local-link-code-change-me
