@@ -17,6 +17,8 @@ export const STAGING_SCHEMA = 'ruzivo_restore';
 // Held for the whole restore so two restores can never overlap.
 const RESTORE_LOCK_KEY = 0x52555a49; // "RUZI"
 
+const UNTRANSLATABLE_CHARACTER = '22P05';
+
 export type RestoreResult = { tables: number; rows: number };
 
 /**
@@ -49,6 +51,19 @@ export async function restoreBackup(pool: Pool, dir: string, manifest: BackupMan
       await loadIntoStaging(pool, dir, manifest);
       await migrate({ schema: STAGING_SCHEMA });
       return await replaceLiveData(pool);
+    } catch (error) {
+      // 22P05: text this database's character set cannot hold. Installs from
+      // before v0.3.1 created their database in the Windows character set
+      // (WIN1252); newer ones use UTF-8, so a name with, say, a symbol or a
+      // non-Latin letter can come from a newer install but not fit here.
+      if ((error as { code?: string }).code === UNTRANSLATABLE_CHARACTER) {
+        throw new Error(
+          "This backup has text (such as a symbol or letter in a name) that this computer's database cannot store, " +
+            'because its database was created by an older version of the app. Nothing was changed. ' +
+            'Restore it on a computer installed with this version of the app instead.'
+        );
+      }
+      throw error;
     } finally {
       await pool.query(`DROP SCHEMA IF EXISTS ${ident(STAGING_SCHEMA)} CASCADE`).catch(() => {});
     }

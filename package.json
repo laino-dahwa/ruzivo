@@ -16,7 +16,7 @@
     "migrate": "node scripts/migrate.mjs",
     "electron:build": "tsc -p electron/tsconfig.json && node scripts/copy-electron-static.mjs",
     "electron:dev": "npm run electron:build && electron .",
-    "electron:build:prod": "next build && node scripts/prepare-standalone.mjs && npm run electron:build && node scripts/fetch-vc-redist.mjs"
+    "electron:build:prod": "next build && node scripts/prepare-standalone.mjs && npm run electron:build"
   },
   "dependencies": {
     "@radix-ui/react-accordion": "^1.2.20",

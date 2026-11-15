@@ -270,6 +270,35 @@ describe("refusing a backup that is not safe to restore", () => {
     await expect(readBackup(copy, MIGRATIONS_DIR)).rejects.toThrow(/newer version of Ruzivo \(9\.0\.0\)/);
   });
 
+  it("explains, and changes nothing, when an older install's database cannot store the backup's text", async () => {
+    // Installs before v0.3.1 created their database in the Windows character
+    // set; a backup from a newer, UTF-8 install can hold text that won't fit.
+    const OLD_ENCODING_DB = "ruzivo_backup_test_win1252";
+    const admin = new Client(connection(process.env.PGADMINDB || "postgres"));
+    await admin.connect();
+    await admin.query(`DROP DATABASE IF EXISTS "${OLD_ENCODING_DB}" WITH (FORCE)`);
+    await admin.query(`CREATE DATABASE "${OLD_ENCODING_DB}" ENCODING 'WIN1252' LC_COLLATE 'C' LC_CTYPE 'C' TEMPLATE template0`);
+    await admin.end();
+    const oldPool = new Pool({ ...connection(OLD_ENCODING_DB), max: 3 });
+    try {
+      await migratorFor(OLD_ENCODING_DB)({ schema: "public" });
+      await oldPool.query(`INSERT INTO schools (school_id, school_name) VALUES ('KEEP', 'Kept School')`);
+
+      await pool.query(`UPDATE learners SET first_name = 'Rudo ✓'`);
+      const fromNewInstall = (await createBackup(pool, { parentDir: workDir, appVersion: "9.9.9", createdBy: null, skipReadableCopy: true })).path;
+      await pool.query(`UPDATE learners SET first_name = 'Rudo'`);
+
+      await expect(
+        restoreBackup(oldPool, fromNewInstall, await readBackup(fromNewInstall, MIGRATIONS_DIR), migratorFor(OLD_ENCODING_DB))
+      ).rejects.toThrow(/cannot store.*Nothing was changed/);
+      const schools = await oldPool.query(`SELECT school_id FROM schools`);
+      expect(schools.rows.map((r) => r.school_id.trim())).toEqual(["KEEP"]);
+    } finally {
+      await oldPool.end();
+      await dropDatabase(OLD_ENCODING_DB);
+    }
+  }, 120_000);
+
   it("leaves the current data untouched when a restore fails part-way", async () => {
     // A row that passes the fingerprint check (it is re-fingerprinted) but
     // breaks a foreign key, so loading it fails inside the restore.
