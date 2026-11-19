@@ -50,7 +50,7 @@ export function AppShell({ children, actor }: { children: ReactNode; actor: Shel
   const ungrouped = visibleNav.filter((item) => !item.group);
 
   // The breadcrumb used to read "Live data from your API", which told nobody
-  // anything. The longest matching href wins so /unpaid-mandatory is not
+  // anything. The longest matching href wins so /expected-fees is not
   // claimed by /, which every path starts with.
   const currentPage =
     [...nav]

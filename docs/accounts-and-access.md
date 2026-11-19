@@ -14,8 +14,8 @@ Every account holds one **role**, and every role carries an **access level** —
 | Edit or archive a learner | yes | no |
 | Record a payment | yes | yes |
 | Delete a payment | yes | no |
-| Owing | yes | yes |
-| Unpaid Mandatory | yes | yes |
+| Balances | yes | yes |
+| Expected fees: view, accept, deny, undo | yes | yes |
 | Expenses | yes | yes |
 | Reports and PDF exports | yes | no |
 | Manage users and roles | yes | no |

@@ -37,7 +37,9 @@ export type PutBlob = (key: string, bytes: Uint8Array, contentType: string) => P
  * desktop app that has run a newer migration may have columns this mirror
  * lacks: it is refused until the D1 schema is updated to match.
  */
-export const SUPPORTED_MIGRATIONS = new Set(['014_sync_outbox']);
+// 014 stays accepted after 015 is added: a computer that has not upgraded yet
+// keeps syncing, it just has no fee decisions to send.
+export const SUPPORTED_MIGRATIONS = new Set(['014_sync_outbox', '015_fee_decisions']);
 
 /** How far a batch's timestamp may be from the Worker's clock. */
 const MAX_CLOCK_SKEW_MS = 5 * 60 * 1000;

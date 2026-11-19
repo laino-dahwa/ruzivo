@@ -71,6 +71,8 @@ export const TABLES: Record<string, TableSpec> = {
   income_category_learners: { pk: ['income_category_learner_id'] },
   income_category_periods: { pk: ['income_category_period_id'] },
   charges: { pk: ['charge_id'], timestamps: ['created_at'] },
+  fee_decisions: { pk: ['fee_decision_id'], char: ['school_id'], money: ['amount'], timestamps: ['decided_at'] },
+  fee_exemptions: { pk: ['fee_exemption_id'], char: ['school_id'], timestamps: ['exempted_at'] },
   payments: { pk: ['payment_id'], money: ['amount'], timestamps: ['paid_at'], derivedSchoolId: true },
   payment_allocations: { pk: ['allocation_id'] },
   expenses: { pk: ['expense_id'], money: ['amount'], timestamps: ['created_at'], derivedSchoolId: true },

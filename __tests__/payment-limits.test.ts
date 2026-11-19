@@ -122,6 +122,8 @@ afterEach(async () => {
   await query(`DELETE FROM payment_allocations WHERE charge_id IN (SELECT charge_id FROM charges WHERE learner_id = ANY($1::text[]))`, [[learnerId, otherLearnerId]]);
   await query(`DELETE FROM payments WHERE payment_id NOT IN (SELECT payment_id FROM payment_allocations)`);
   await query(`DELETE FROM charges WHERE learner_id = ANY($1::text[])`, [[learnerId, otherLearnerId]]);
+  // Payments accept the fees they pay; a clean slate removes those too.
+  await query(`DELETE FROM fee_decisions WHERE learner_id = ANY($1::text[])`, [[learnerId, otherLearnerId]]);
 });
 
 describe("single payments against the period limit", () => {
@@ -466,35 +468,28 @@ describe("once-off income categories", () => {
     expect(byPeriod).toEqual({ January: { paid: 30, balance: 70 }, February: { paid: 20, balance: 80 } });
   });
 
-  it("is not listed as owed until paid, then shows the rest owing in that period only", async () => {
-    const { getObligations } = await import("../repositories/payment/read/getObligations");
-    const filters = {
-      class_category_id: null, learner_id: learnerId, income_category_id: registrationId,
-      priority: null, status: null, academic_year_id: null, payment_period_id: null,
-    };
-    expect(await getObligations(SCHOOL, filters)).toHaveLength(0);
+  it("is never suggested as an expected fee, and once paid owes the rest in that period only", async () => {
+    const { getExpectedFees } = await import("../repositories/expected-fees/getExpectedFees");
+    const pending = () => getExpectedFees(SCHOOL, { decision: "PENDING", learner_id: learnerId, income_category_id: registrationId });
+    expect(await pending()).toHaveLength(0);
 
     await post(payment(5, { income: registrationId, period: januaryId }));
-    let rows = await getObligations(SCHOOL, filters);
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ priority: "ONCE_OFF", period_name: "January", status: "PARTIALLY_PAID" });
-    expect(Number(rows[0].balance)).toBe(95);
+    expect(await pending()).toHaveLength(0);
+    let owed = await getBalances(SCHOOL, learnerId, null, null, null, "Registration", null, true);
+    expect(owed.map((r) => [r.period_name, Number(r.balance)])).toEqual([["January", 95]]);
 
-    // Paying it again in February adds February's own row; nothing is
+    // Paying it again in February adds February's own balance; nothing is
     // projected into periods it was never paid in.
     await post(payment(10, { income: registrationId, period: februaryId }));
-    rows = await getObligations(SCHOOL, filters);
-    expect(rows.map((r) => [r.period_name, Number(r.balance)]).sort()).toEqual([["February", 90], ["January", 95]]);
+    expect(await pending()).toHaveLength(0);
+    owed = await getBalances(SCHOOL, learnerId, null, null, null, "Registration", null, true);
+    expect(owed.map((r) => [r.period_name, Number(r.balance)]).sort()).toEqual([["February", 90], ["January", 95]]);
   });
 
-  it("with no limit set, is never listed as owed, even once paid", async () => {
-    const { getObligations } = await import("../repositories/payment/read/getObligations");
+  it("with no limit set, is never owed, even once paid", async () => {
     await post(payment(25, { income: examLevyId, period: januaryId }));
-    const rows = await getObligations(SCHOOL, {
-      class_category_id: null, learner_id: learnerId, income_category_id: examLevyId,
-      priority: null, status: null, academic_year_id: null, payment_period_id: null,
-    });
-    expect(rows).toHaveLength(0);
+    const owed = await getBalances(SCHOOL, learnerId, null, null, null, "Exam Levy", null, true);
+    expect(owed).toHaveLength(0);
   });
 });
 

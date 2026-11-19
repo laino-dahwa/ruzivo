@@ -1,8 +1,7 @@
-import { UnpaidMandatoryView } from '../../../components/owing/unpaid-mandatory-view';
-import { requirePageAccess } from '../../../lib/auth/page-guard';
+import { permanentRedirect } from 'next/navigation';
 
-export default async function Page() {
-  await requirePageAccess('obligation.read');
-
-  return <UnpaidMandatoryView />;
+// Learner owings and the old Expected fees table were combined into one page.
+// Kept so bookmarks and old links still land somewhere useful.
+export default function Page() {
+  permanentRedirect('/expected-fees');
 }

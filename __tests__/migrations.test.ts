@@ -67,7 +67,7 @@ describe("migrations — fresh database", () => {
     });
     // Asserted in order and in full: a migration that stops being applied,
     // or one that lands out of sequence, is exactly the failure this catches.
-    expect(applied.map((m) => m.name)).toEqual(["001_initial_schema", "002_school_logos", "003_employees", "004_roles", "005_income_category_applicability", "006_auth_and_audit", "007_documents", "008_payroll", "009_performance_indexes", "010_document_invoices", "011_once_off_income", "012_security_keys", "013_once_off_any_period", "014_sync_outbox"]);
+    expect(applied.map((m) => m.name)).toEqual(["001_initial_schema", "002_school_logos", "003_employees", "004_roles", "005_income_category_applicability", "006_auth_and_audit", "007_documents", "008_payroll", "009_performance_indexes", "010_document_invoices", "011_once_off_income", "012_security_keys", "013_once_off_any_period", "014_sync_outbox", "015_fee_decisions"]);
   });
 
   it("creates every table the application code depends on", async () => {
@@ -86,6 +86,8 @@ describe("migrations — fresh database", () => {
       "enrolments",
       "expense_categories",
       "expenses",
+      "fee_decisions",
+      "fee_exemptions",
       "genders",
       "income_categories",
       "income_category_classes",

@@ -68,6 +68,32 @@ export async function deleteCharge(chargeId: number) {
     }
 
 
-    return chargeResult.rows[0];
+    // 5. A fee accepted only because it was paid (source PAYMENT) is no
+    //    longer accepted once its last payment is gone: deleting a mistaken
+    //    payment must not leave the learner owing the whole fee. A fee
+    //    someone accepted on purpose stays accepted, and owing.
+    const charge = chargeResult.rows[0];
+    await client.query(
+      `
+      DELETE FROM fee_decisions fd
+      WHERE fd.learner_id = $1
+        AND fd.income_category_id = $2
+        AND fd.payment_period_id = $3
+        AND fd.academic_year_id = $4
+        AND fd.decision = 'ACCEPTED'
+        AND fd.source = 'PAYMENT'
+        AND NOT EXISTS (
+          SELECT 1 FROM charges c
+          WHERE c.learner_id = fd.learner_id
+            AND c.income_category_id = fd.income_category_id
+            AND c.payment_period_id = fd.payment_period_id
+            AND c.academic_year_id = fd.academic_year_id
+        )
+      `,
+      [charge.learner_id, charge.income_category_id, charge.payment_period_id, charge.academic_year_id]
+    );
+
+
+    return charge;
   });
 }

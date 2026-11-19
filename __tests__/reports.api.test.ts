@@ -93,6 +93,18 @@ async function addLearnerWithEnrolment(fixture: SchoolFixture, firstName: string
 
 async function backdateTimestamp(table: "charges" | "payments", idColumn: string, id: number, isoWithOffset: string) {
     await query(`UPDATE ${table} SET ${table === "charges" ? "created_at" : "paid_at"} = $1 WHERE ${idColumn} = $2`, [isoWithOffset, id]);
+    if (table === "charges") {
+        // The owing report dates a fee by when it was accepted - for a paid
+        // fee, by its payment - so the acceptance moves with the charge.
+        await query(
+            `UPDATE fee_decisions fd SET decided_at = $1
+             FROM charges c
+             WHERE c.charge_id = $2
+               AND fd.learner_id = c.learner_id AND fd.income_category_id = c.income_category_id
+               AND fd.payment_period_id = c.payment_period_id AND fd.academic_year_id = c.academic_year_id`,
+            [isoWithOffset, id]
+        );
+    }
 }
 
 let school1: SchoolFixture;
@@ -116,15 +128,14 @@ beforeAll(async () => {
     await backdateTimestamp("charges", "charge_id", chargeA.charge_id, `${DATE_A}T10:00:00+02:00`);
     await backdateTimestamp("payments", "payment_id", paymentA.payment_id, `${DATE_A}T10:00:00+02:00`);
 
-    // School 1 / Learner B: charged 500 on DATE_B, never paid -> outstanding 500, "Unpaid".
-    // Inserted raw because the app's only charge-creation path (createChargesWithPayments)
-    // always pairs a charge with a payment; this proves the report still surfaces a
-    // fully-unpaid charge (LEFT JOIN), which an INNER JOIN would silently drop.
+    // School 1 / Learner B: fee of 500 accepted on DATE_B, never paid -> outstanding 500,
+    // "Unpaid". An accepted fee with no payment is owed in full; this proves the
+    // report surfaces it, which an INNER JOIN through payments would silently drop.
     const learnerB = await addLearnerWithEnrolment(school1, "Bilal");
     await query(
-        `INSERT INTO charges (learner_id, enrolment_id, income_category_id, payment_period_id, academic_year_id, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6) RETURNING charge_id`,
-        [learnerB.learner_id, learnerB.enrolment_id, school1.incomeCategoryId, school1.paymentPeriodId, school1.academicYearId, `${DATE_B}T09:00:00+02:00`]
+        `INSERT INTO fee_decisions (school_id, learner_id, income_category_id, payment_period_id, academic_year_id, decision, amount, decided_at)
+         VALUES ($1, $2, $3, $4, $5, 'ACCEPTED', 500, $6)`,
+        [SCHOOL_1, learnerB.learner_id, school1.incomeCategoryId, school1.paymentPeriodId, school1.academicYearId, `${DATE_B}T09:00:00+02:00`]
     );
 
     // School 1 expenses: one on DATE_A, one on DATE_B.

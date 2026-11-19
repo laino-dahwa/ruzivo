@@ -7,7 +7,6 @@ import {
   Receipt,
   Scale,
   ShieldAlert,
-  UserRoundSearch,
   Users,
   Wallet,
 } from 'lucide-react';
@@ -42,17 +41,16 @@ export type NavItem = {
  *
  * Labels are deliberately short and plain. "Balances" and "Expected fees"
  * used to be "Owing" and "Unpaid Mandatory", which nobody could tell apart
- * without clicking: the first is money already charged and still outstanding,
- * the second is money learners are expected to pay whether or not they have
- * started. Array order is display order.
+ * without clicking: the first is what learners owe (fees that have been
+ * accepted), the second is fees the system suggests they should be paying,
+ * waiting for someone to accept or deny them. Array order is display order.
  */
 export const nav: NavItem[] = [
   { href: '/', label: 'Overview', icon: LayoutDashboard, capability: 'overview.view' },
 
   { href: '/payments', label: 'Payments', icon: CircleDollarSign, capability: 'payment.read', group: 'money' },
   { href: '/owing', label: 'Balances', icon: Scale, capability: 'balance.read', group: 'money' },
-  { href: '/unpaid-mandatory', label: 'Expected fees', icon: ShieldAlert, capability: 'obligation.read', group: 'money' },
-  { href: '/learner-owings', label: 'Learner owings', icon: UserRoundSearch, capability: 'obligation.read', group: 'money' },
+  { href: '/expected-fees', label: 'Expected fees', icon: ShieldAlert, capability: 'obligation.read', group: 'money' },
   { href: '/expenses', label: 'Expenses', icon: Receipt, capability: 'expense.read', group: 'money' },
 
   { href: '/learners', label: 'Learners', icon: Users, capability: 'learner.read', group: 'people' },

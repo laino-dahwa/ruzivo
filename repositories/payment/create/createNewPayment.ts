@@ -94,7 +94,7 @@ function limitKeyOf(input: CreateChargesWithPaymentsInput, income_category_id: n
   };
 }
 
-function keyString(key: LimitKey): string {
+export function keyString(key: LimitKey): string {
   return `${key.learner_id}|${key.income_category_id}|${key.payment_period_id}|${key.academic_year_id}`;
 }
 
@@ -189,8 +189,12 @@ async function loadOnceOffApplicability(
  * Every key is taken in one statement, in a fixed (sorted) order, so two
  * batches touching the same keys can't deadlock by locking them in opposite
  * orders.
+ *
+ * Accepting or withdrawing an expected fee (repositories/expected-fees/)
+ * takes the same locks, so a payment and a decision on the same fee are
+ * never interleaved.
  */
-async function lockLimitKeys(client: PoolClient, keys: string[]): Promise<void> {
+export async function lockLimitKeys(client: PoolClient, keys: string[]): Promise<void> {
   if (keys.length === 0) return;
   const sorted = [...new Set(keys)].sort();
   await client.query(
@@ -233,6 +237,79 @@ async function loadExistingPaid(client: PoolClient, keys: LimitKey[]): Promise<M
 }
 
 /**
+ * The amount each already-accepted fee was fixed at (fee_decisions, migration
+ * 015), keyed by keyString(). A fee that is accepted owes that amount even if
+ * the fee's limit has changed since; a key missing here (not accepted yet) or
+ * accepted without an amount falls back to the fee's current limit. Must run
+ * after lockLimitKeys, like loadExistingPaid.
+ */
+async function loadAcceptedAmounts(client: PoolClient, keys: LimitKey[]): Promise<Map<string, number>> {
+  if (keys.length === 0) return new Map();
+
+  const result = await client.query(
+    `
+    SELECT k.key, fd.amount
+    FROM unnest($1::text[], $2::varchar[], $3::bigint[], $4::bigint[], $5::bigint[])
+      AS k(key, learner_id, income_category_id, payment_period_id, academic_year_id)
+    JOIN fee_decisions fd
+      ON fd.learner_id = k.learner_id
+      AND fd.income_category_id = k.income_category_id
+      AND fd.payment_period_id = k.payment_period_id
+      AND fd.academic_year_id = k.academic_year_id
+    WHERE fd.decision = 'ACCEPTED' AND fd.amount IS NOT NULL
+    `,
+    [
+      keys.map(keyString),
+      keys.map((key) => key.learner_id),
+      keys.map((key) => key.income_category_id),
+      keys.map((key) => key.payment_period_id),
+      keys.map((key) => key.academic_year_id),
+    ]
+  );
+  return new Map(result.rows.map((row) => [String(row.key), Number(row.amount)]));
+}
+
+/**
+ * Records that every fee in this request is accepted (owed), as paying a fee
+ * accepts it. A fee already accepted keeps its fixed amount; one that was
+ * denied for this period is accepted after all, since it is being paid.
+ * `source = 'PAYMENT'` lets deleteCharge remove the acceptance again if the
+ * payment turns out to be a mistake.
+ */
+async function acceptPaidFees(client: PoolClient, keys: LimitKey[]): Promise<void> {
+  if (keys.length === 0) return;
+
+  await client.query(
+    `
+    INSERT INTO fee_decisions (
+      school_id, learner_id, income_category_id, payment_period_id, academic_year_id,
+      decision, amount, source, decided_by_label
+    )
+    SELECT l.school_id, k.learner_id, k.income_category_id, k.payment_period_id, k.academic_year_id,
+           'ACCEPTED', ic.income_limit, 'PAYMENT', 'Recorded payment'
+    FROM unnest($1::varchar[], $2::bigint[], $3::bigint[], $4::bigint[])
+      AS k(learner_id, income_category_id, payment_period_id, academic_year_id)
+    JOIN learners l ON l.learner_id = k.learner_id
+    JOIN income_categories ic ON ic.income_category_id = k.income_category_id
+    ON CONFLICT (learner_id, income_category_id, payment_period_id, academic_year_id) DO UPDATE
+      SET decision = 'ACCEPTED',
+          amount = EXCLUDED.amount,
+          source = 'PAYMENT',
+          decided_by_employee_id = NULL,
+          decided_by_label = EXCLUDED.decided_by_label,
+          decided_at = CURRENT_TIMESTAMP
+      WHERE fee_decisions.decision = 'SKIPPED'
+    `,
+    [
+      keys.map((key) => key.learner_id),
+      keys.map((key) => key.income_category_id),
+      keys.map((key) => key.payment_period_id),
+      keys.map((key) => key.academic_year_id),
+    ]
+  );
+}
+
+/**
  * Checks every payment line in the request against what the learner has
  * already paid, accumulating as it goes so several lines in one request can't
  * collectively exceed the limit even though each would pass on its own.
@@ -259,14 +336,18 @@ async function assertWithinLimits(client: PoolClient, inputs: CreateChargesWithP
 
   await lockLimitKeys(client, uniqueKeys.map(keyString));
   const existingPaid = await loadExistingPaid(client, uniqueKeys);
+  const acceptedAmounts = await loadAcceptedAmounts(client, uniqueKeys);
 
   const violations: PaymentLimitViolation[] = [];
   // Running total of what this request has already committed to each key.
   const pending = new Map<string, number>();
 
   for (const { index, input, line, key } of lines) {
-    const { limit, income_name, onceOff } = ruleFor(line.income_category_id);
+    const rule = ruleFor(line.income_category_id);
+    const { income_name, onceOff } = rule;
     const id = keyString(key);
+    // An accepted fee owes the amount it was accepted at, not today's limit.
+    const limit = acceptedAmounts.get(id) ?? rule.limit;
     const amount = Number(line.amount);
     const scope = `for ${periodNames.get(String(input.payment_period_id)) ?? "this period"}`;
 
@@ -446,6 +527,10 @@ export async function createChargesWithPayments(
         });
       }
     }
+
+    // Paying a fee accepts it: it is owed from now on, and leaves Expected fees.
+    const paidKeys = inputs.flatMap((input) => input.income_categories.map((line) => limitKeyOf(input, line.income_category_id)));
+    await acceptPaidFees(client, [...new Map(paidKeys.map((key) => [keyString(key), key])).values()]);
 
     return results;
   });

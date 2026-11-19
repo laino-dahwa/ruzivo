@@ -2,7 +2,7 @@ import { transaction } from "../../../lib/db";
 import { insertIncomeCategoryMembership } from "../incomeCategoryMembership";
 
 /**
- * MANDATORY and OPTIONAL feed the obligations engine (obligationsQuery.ts).
+ * MANDATORY and OPTIONAL feed the expected fees engine (repositories/expected-fees/pendingFeesQuery.ts).
  * ONCE_OFF is never projected as owed: it can be paid in any period, or not
  * at all. In a period it has been paid in, its limit applies to that period
  * and the rest of it shows as owed for that period - see onceOffNormalised.

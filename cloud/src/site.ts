@@ -229,7 +229,7 @@ ${table(
     const [obligations, payments] = await Promise.all([
       all(
         db,
-        `SELECT * FROM v_obligations WHERE learner_id = ?
+        `SELECT * FROM v_balances WHERE learner_id = ?
          ORDER BY CASE WHEN balance_cents > 0 THEN 0 ELSE 1 END, academic_year_name DESC, priority, income_name, payment_period_id`,
         id
       ),
@@ -241,7 +241,7 @@ ${table(
 <p class="sub">${esc(learner.learner_id)}${learner.gender_name ? ` · ${esc(learner.gender_name)}` : ''}${learner.date_of_birth ? ` · born ${when(`${learner.date_of_birth}T12:00:00Z`, env, false)}` : ''}</p>
 <div class="stats"><div class="stat"><b>${money(owing)}</b><span>Owing</span></div><div class="stat"><b>${money(paid)}</b><span>Paid in total · ${payments.length} payments</span></div></div>
 <h2>Fees</h2>${table(
-      ['Fee', 'Period', 'Year', 'Expected', 'Paid', 'Balance', ''],
+      ['Fee', 'Period', 'Year', 'Owed', 'Paid', 'Balance', ''],
       obligations.map((o) => [esc(o.income_name), esc(o.period_name), esc(o.academic_year_name), money(o.expected_cents), money(o.paid_cents), money(o.balance_cents), statusPill(o.status)]),
       [3, 4, 5]
     )}

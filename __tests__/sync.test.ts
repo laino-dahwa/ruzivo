@@ -24,7 +24,27 @@ import { handleLogin, sessionViewer } from "../cloud/src/password";
 import { createBackup } from "../electron/backup/create-backup";
 import { readBackup } from "../electron/backup/read-backup";
 import { restoreBackup, type MigrateFn } from "../electron/backup/restore-backup";
-import { OBLIGATIONS_CTE } from "../repositories/payment/read/obligationsQuery";
+import { PAID_TOWARD_FEE } from "../repositories/payment/read/paidTowardFee";
+
+/**
+ * The desktop's amounts owing for one school - the rows the Balances page
+ * shows (repositories/payment/read/getBalances.ts) - counted and summed, so
+ * the website's v_balances can be checked against them to the cent.
+ */
+const DESKTOP_BALANCES = `
+  SELECT count(*)::int AS n, coalesce(sum(balance), 0)::text AS b, coalesce(sum(paid), 0)::text AS p
+  FROM (
+    SELECT COALESCE(fd.amount, ic.income_limit) AS charged,
+           COALESCE(paid.total, 0) AS paid,
+           COALESCE(fd.amount, ic.income_limit) - COALESCE(paid.total, 0) AS balance
+    FROM fee_decisions fd
+    JOIN learners l ON l.learner_id = fd.learner_id
+    JOIN income_categories ic ON ic.income_category_id = fd.income_category_id
+    ${PAID_TOWARD_FEE}
+    WHERE fd.school_id = $1 AND fd.decision = 'ACCEPTED' AND l.deleted_at IS NULL
+  ) owed
+  WHERE charged IS NOT NULL
+`;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Row conversion (no database needed)
@@ -290,6 +310,12 @@ async function seed() {
     const payment = await one(`INSERT INTO payments (amount, payment_method_id) VALUES ($1, $2) RETURNING payment_id`, [amount, method.payment_method_id]);
     await pool.query(`INSERT INTO payment_allocations (payment_id, charge_id) VALUES ($1, $2)`, [payment.payment_id, charge.charge_id]);
   }
+  // Paying a fee accepts it (createChargesWithPayments does this in the app).
+  await pool.query(
+    `INSERT INTO fee_decisions (school_id, learner_id, income_category_id, payment_period_id, academic_year_id, decision, amount, source)
+     SELECT 'SYN', 'SYN00001', $1, $2, $3, 'ACCEPTED', income_limit, 'PAYMENT' FROM income_categories WHERE income_category_id = $1`,
+    [fee.income_category_id, period.payment_period_id, year.academic_year_id]
+  );
   await pool.query(`INSERT INTO school_logos (school_id, original, ico) VALUES ('SYN', $1, $2)`, [Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 255]), Buffer.from([0, 0, 1, 0])]);
   await pool.query(`INSERT INTO school_logo_renditions (school_id, size, png) VALUES ('SYN', 64, $1)`, [Buffer.from([0x89, 0x50, 1, 2])]);
 }
@@ -423,8 +449,8 @@ describe("syncing to the Worker", () => {
   });
 
   it("matches the desktop's own amounts owing", async () => {
-    const pgRows = (await pool.query(`${OBLIGATIONS_CTE} SELECT count(*)::int AS n, coalesce(sum(balance), 0)::text AS b, coalesce(sum(paid), 0)::text AS p FROM obligations`, ["SYN"])).rows[0];
-    const d1Row = mirrorRow("SELECT count(*) AS n, coalesce(sum(balance_cents), 0) AS b, coalesce(sum(paid_cents), 0) AS p FROM v_obligations WHERE school_id = 'SYN'")!;
+    const pgRows = (await pool.query(DESKTOP_BALANCES, ["SYN"])).rows[0];
+    const d1Row = mirrorRow("SELECT count(*) AS n, coalesce(sum(balance_cents), 0) AS b, coalesce(sum(paid_cents), 0) AS p FROM v_balances WHERE school_id = 'SYN'")!;
     expect(d1Row.n).toBe(pgRows.n);
     expect(d1Row.b).toBe(toCents(pgRows.b));
     expect(d1Row.p).toBe(toCents(pgRows.p));
@@ -539,8 +565,8 @@ describe.skipIf(!realBackup || !existsSync(realBackup))("a real backup, end to e
     expect(mirror).toEqual(pg);
 
     for (const { school_id } of manifest.summary.schools) {
-      const pgRows = (await pool.query(`${OBLIGATIONS_CTE} SELECT count(*)::int AS n, coalesce(sum(balance), 0)::text AS b, coalesce(sum(paid), 0)::text AS p FROM obligations`, [school_id])).rows[0];
-      const d1Row = mirrorRow("SELECT count(*) AS n, coalesce(sum(balance_cents), 0) AS b, coalesce(sum(paid_cents), 0) AS p FROM v_obligations WHERE school_id = ?", school_id.trim())!;
+      const pgRows = (await pool.query(DESKTOP_BALANCES, [school_id])).rows[0];
+      const d1Row = mirrorRow("SELECT count(*) AS n, coalesce(sum(balance_cents), 0) AS b, coalesce(sum(paid_cents), 0) AS p FROM v_balances WHERE school_id = ?", school_id.trim())!;
       expect({ n: d1Row.n, b: d1Row.b, p: d1Row.p }).toEqual({ n: pgRows.n, b: toCents(pgRows.b), p: toCents(pgRows.p) });
     }
 

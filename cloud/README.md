@@ -16,7 +16,7 @@ Desktop app (Postgres) ──signed batches──▶ Worker /sync/* ──▶ D1
   - Logos are stored in R2.
   - `password_hash` and `security_key_hash` are never sent.
 - **D1 schema:** `d1/migrations/0001_initial.sql`, the same tables as Postgres. It includes views the website uses:
-  - `v_obligations` is a direct port of the desktop app's amounts-owing query, so the website matches the app to the cent.
+  - `v_balances` is a direct port of the desktop app's Balances query (accepted fees minus payments), so the website matches the app to the cent. Fees the app only suggests (Expected fees) are never counted as owed.
   - `v_learner_balances`, `v_payment_lines`, `v_daily_takings` and `v_expense_totals`.
 - **Only one computer may write to a database.** Each school computer has its own ids, so linking a second computer stops the first one.
 

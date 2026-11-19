@@ -48,6 +48,10 @@ export const CAPABILITIES = {
 
   "balance.read": ["ADMIN", "CASHIER"],
   "obligation.read": ["ADMIN", "CASHIER"],
+  // Accepting an expected fee turns it into a balance; denying one (for a
+  // period, or forever) stops it being suggested. Whoever takes payments
+  // works through these too.
+  "obligation.decide": ["ADMIN", "CASHIER"],
 
   "expense.read": ["ADMIN", "CASHIER"],
   "expense.create": ["ADMIN", "CASHIER"],
@@ -85,8 +89,7 @@ export const ROUTE_CAPABILITIES = {
   "/learners": "learner.read",
   "/payments": "payment.read",
   "/owing": "balance.read",
-  "/unpaid-mandatory": "obligation.read",
-  "/learner-owings": "obligation.read",
+  "/expected-fees": "obligation.read",
   "/expenses": "expense.read",
   "/reports": "report.read",
   "/statements": "document.manage",

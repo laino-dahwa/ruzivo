@@ -1,6 +1,7 @@
 import { query } from "../../lib/db";
 import { REPORT_TIMEZONE } from "../../lib/reportTimezone";
 import { dateWindow, periodFilter, scopeParams, timestampWindow, type ReportScope } from "../../lib/reports/scope";
+import { PAID_TOWARD_FEE } from "../payment/read/paidTowardFee";
 
 export type ReportSummary = {
     totalPayments: number;
@@ -41,24 +42,19 @@ export async function getReportSummary(
 
     const owingResult = await query(
         `
-        -- Grouped by the fee (learner + income category + period + year), not
-        -- by charge row: each payment creates its own charge, so grouping by
-        -- charge_id counted a part-paid fee once per instalment. Matches
-        -- getOwingReport and getBalances.
+        -- Every accepted fee not yet paid in full: the same rows as
+        -- getOwingReport and the Balances page (getBalances).
         WITH owing AS (
             SELECT
-                ic.income_limit - COALESCE(SUM(p.amount), 0) AS balance
-            FROM learners l
-            JOIN charges c ON c.learner_id = l.learner_id
-            JOIN income_categories ic ON ic.income_category_id = c.income_category_id
-            LEFT JOIN payment_allocations pa ON pa.charge_id = c.charge_id
-            LEFT JOIN payments p ON p.payment_id = pa.payment_id
-            WHERE l.school_id = $1
-              AND ${timestampWindow("c.created_at")}
-              AND ${periodFilter()}
-            GROUP BY l.learner_id, ic.income_category_id, ic.income_limit,
-                     c.payment_period_id, c.academic_year_id
-            HAVING ic.income_limit - COALESCE(SUM(p.amount), 0) > 0
+                COALESCE(fd.amount, ic.income_limit) - COALESCE(paid.total, 0) AS balance
+            FROM fee_decisions fd
+            JOIN income_categories ic ON ic.income_category_id = fd.income_category_id
+            ${PAID_TOWARD_FEE}
+            WHERE fd.school_id = $1
+              AND fd.decision = 'ACCEPTED'
+              AND ${timestampWindow("fd.decided_at")}
+              AND ${periodFilter("fd.payment_period_id")}
+              AND COALESCE(fd.amount, ic.income_limit) - COALESCE(paid.total, 0) > 0
         )
         SELECT COALESCE(SUM(balance), 0) AS total FROM owing
         `,

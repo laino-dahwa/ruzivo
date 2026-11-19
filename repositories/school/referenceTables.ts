@@ -30,6 +30,7 @@ export const ACADEMIC_YEARS: ReferenceTable = {
   dependents: [
     { table: "enrolments", column: "academic_year_id", noun: "enrolment" },
     { table: "charges", column: "academic_year_id", noun: "charge" },
+    { table: "fee_decisions", column: "academic_year_id", noun: "fee decision" },
   ],
   noun: "academic year",
 };
@@ -40,6 +41,7 @@ export const PAYMENT_PERIODS: ReferenceTable = {
   editableColumns: ["period_name"],
   dependents: [
     { table: "charges", column: "payment_period_id", noun: "charge" },
+    { table: "fee_decisions", column: "payment_period_id", noun: "fee decision" },
     { table: "income_category_periods", column: "payment_period_id", noun: "fee configuration" },
   ],
   noun: "payment period",
@@ -57,7 +59,10 @@ export const INCOME_CATEGORIES: ReferenceTable = {
   table: "income_categories",
   idColumn: "income_category_id",
   editableColumns: ["income_name", "income_limit"],
-  dependents: [{ table: "charges", column: "income_category_id", noun: "charge" }],
+  dependents: [
+    { table: "charges", column: "income_category_id", noun: "charge" },
+    { table: "fee_decisions", column: "income_category_id", noun: "fee decision" },
+  ],
   noun: "income category",
 };
 

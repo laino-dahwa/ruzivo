@@ -31,12 +31,11 @@ describe("what each role sees", () => {
     expect(visibleTo("ADMIN")).toHaveLength(nav.length);
   });
 
-  it("shows a cashier only the six pages they can work in", () => {
+  it("shows a cashier only the five pages they can work in", () => {
     expect(visibleTo("CASHIER").map((item) => item.label)).toEqual([
       "Payments",
       "Balances",
       "Expected fees",
-      "Learner owings",
       "Expenses",
       "Learners",
     ]);
