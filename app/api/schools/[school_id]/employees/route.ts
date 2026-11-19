@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { guardSchool, requireAuth } from "../../../../../lib/auth/guard";
 import { getEmployees } from "@/repositories/employee/read/getEmployees";
 import { createEmployees } from "@/repositories/employee/create/createEmployee";
 import { deleteEmployee } from "@/repositories/employee/delete/deleteEmployee";
@@ -13,7 +14,10 @@ type Params = {
 
 export async function GET(request: Request, { params }: Params) {
   try {
-    const { school_id } = await params;
+    const { school_id: requested } = await params;
+    const auth = await guardSchool(request, "user.manage", requested);
+    if (!auth.ok) return auth.response;
+    const school_id = auth.school_id;
     const response = await getEmployees(school_id);
     return NextResponse.json(response);
   } catch (error) {
@@ -24,6 +28,9 @@ export async function GET(request: Request, { params }: Params) {
 
 export async function POST(request: Request) {
   try {
+      const auth = await requireAuth(request, "user.manage");
+      if (!auth.ok) return auth.response;
+
     const body = await request.json();
     const records = normalizeToArray(body);
 
@@ -54,7 +61,10 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request, { params }: Params) {
   try {
-    const { school_id } = await params;
+    const { school_id: requested } = await params;
+    const auth = await guardSchool(request, "user.manage", requested);
+    if (!auth.ok) return auth.response;
+    const school_id = auth.school_id;
     const { searchParams } = new URL(request.url);
     const raw = searchParams.get("employee_id");
 

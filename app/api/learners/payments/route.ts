@@ -9,8 +9,64 @@ import { validatePayments } from "../../../../lib/validation/entities";
 import { isPdfFormat } from "../../../../lib/reportRequest";
 import { tablePdfResponse } from "../../../../lib/pdf/tablePdfResponse";
 import { formatCurrency } from "../../../../lib/currency";
+import { guardSchool, refuseOtherSchools, requireAuth } from "../../../../lib/auth/guard";
+import type { Actor } from "../../../../lib/auth/session";
+import { query } from "../../../../lib/db";
 
 export const runtime = "nodejs";
+
+type PaymentRecord = {
+    learner_id: string;
+    enrolment_id: number;
+    payment_period_id: number;
+    academic_year_id: number;
+    payment_method_id: number;
+    income_categories: { income_category_id: number }[];
+};
+
+/**
+ * A payment names a learner, an enrolment, a period, a year, a method and
+ * fees by id. Every one of them must belong to the learner's school, and
+ * that school must be one the actor may act on (a cashier: their own).
+ * Returns the refusal, or null when the request stays inside its school.
+ */
+async function schoolsOutsideScope(actor: Actor, records: PaymentRecord[]): Promise<NextResponse | null> {
+    const learnerIds = [...new Set(records.map((r) => r.learner_id))]
+    const learners = await query(`SELECT learner_id, school_id FROM learners WHERE learner_id = ANY($1::varchar[])`, [learnerIds])
+    const schoolOf = new Map(learners.rows.map((row) => [String(row.learner_id), String(row.school_id).trim()]))
+
+    // Unknown learners are left to the payment itself to reject.
+    const refused = refuseOtherSchools(actor, [...schoolOf.values()])
+    if (refused) return refused
+
+    const lines = records.flatMap((r) => r.income_categories.map((line) => ({ ...r, income_category_id: line.income_category_id })))
+    const mismatch = await query(
+        `
+        SELECT 1
+        FROM unnest($1::varchar[], $2::bigint[], $3::bigint[], $4::bigint[], $5::bigint[], $6::bigint[])
+          AS k(learner_id, enrolment_id, payment_period_id, academic_year_id, payment_method_id, income_category_id)
+        JOIN learners l ON l.learner_id = k.learner_id
+        WHERE NOT EXISTS (SELECT 1 FROM enrolments e WHERE e.enrolment_id = k.enrolment_id AND e.learner_id = k.learner_id)
+           OR NOT EXISTS (SELECT 1 FROM payment_periods pp WHERE pp.payment_period_id = k.payment_period_id AND pp.school_id = l.school_id)
+           OR NOT EXISTS (SELECT 1 FROM academic_years ay WHERE ay.academic_year_id = k.academic_year_id AND ay.school_id = l.school_id)
+           OR NOT EXISTS (SELECT 1 FROM payment_methods pm WHERE pm.payment_method_id = k.payment_method_id AND pm.school_id = l.school_id)
+           OR NOT EXISTS (SELECT 1 FROM income_categories ic WHERE ic.income_category_id = k.income_category_id AND ic.school_id = l.school_id)
+        LIMIT 1
+        `,
+        [
+            lines.map((l) => l.learner_id),
+            lines.map((l) => l.enrolment_id),
+            lines.map((l) => l.payment_period_id),
+            lines.map((l) => l.academic_year_id),
+            lines.map((l) => l.payment_method_id),
+            lines.map((l) => l.income_category_id),
+        ]
+    )
+    if (mismatch.rows.length > 0) {
+        return NextResponse.json({ error: "The fee, period, year, method or enrolment does not belong to this learner's school." }, { status: 400 })
+    }
+    return null
+}
 
 function getOptionalParam(searchParams:URLSearchParams,name:string):string|null{
     const value = searchParams.get(name);
@@ -26,10 +82,13 @@ export async function GET(request:Request) {
         const {searchParams} = new URL(request.url)
 
         // Required: payments are only ever listed for one school.
-        const  school_id = getOptionalParam(searchParams,"school_id")
-        if (!school_id) {
+        const  requested = getOptionalParam(searchParams,"school_id")
+        if (!requested) {
             return NextResponse.json({ error: "school_id is required" }, { status: 400 })
         }
+        const auth = await guardSchool(request, "payment.read", requested)
+        if (!auth.ok) return auth.response
+        const school_id = auth.school_id
 
         const filters = {
             learner_id: getOptionalParam(searchParams,"learner_id"),
@@ -100,6 +159,9 @@ export async function GET(request:Request) {
 
 export async function POST(request:Request){
     try{
+        const auth = await requireAuth(request, "payment.create")
+        if (!auth.ok) return auth.response
+
         const body = await request.json()
 
         // Accepts a single payment object or an array of them.
@@ -129,7 +191,11 @@ export async function POST(request:Request){
             )
         }
 
-        const schools = await createChargesWithPayments(records as unknown as Parameters<typeof createChargesWithPayments>[0])
+        const payments = records as unknown as Parameters<typeof createChargesWithPayments>[0]
+        const outside = await schoolsOutsideScope(auth.actor, payments as unknown as PaymentRecord[])
+        if (outside) return outside
+
+        const schools = await createChargesWithPayments(payments)
 
         return NextResponse.json(
             schools,
@@ -178,6 +244,9 @@ export async function POST(request:Request){
 
 export async function DELETE(request:Request){
     try{
+        const auth = await requireAuth(request, "payment.delete")
+        if (!auth.ok) return auth.response
+
         const {searchParams} = new URL(request.url)
        
 

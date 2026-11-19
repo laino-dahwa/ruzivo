@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { guardSchool, requireAuth } from "../../../../../lib/auth/guard";
 import {getPaymentMethods} from "../../../../../repositories/school/read/getPaymentMethods"
 import { createPaymentMethod } from "@/repositories/school/create/createPaymentMethod";
 import { UpdatePaymentMethod } from "@/repositories/school/update/updatePaymentMethods";
@@ -13,7 +14,10 @@ type Params= {
 }
 
 export async function GET(request:Request,{ params }:Params) {
-    const { school_id } = await params;
+    const { school_id: requested } = await params;
+    const auth = await guardSchool(request, "reference.read", requested);
+    if (!auth.ok) return auth.response;
+    const school_id = auth.school_id;
     const response = await getPaymentMethods(school_id)
 
     return NextResponse.json(response)
@@ -23,6 +27,9 @@ export async function GET(request:Request,{ params }:Params) {
 
 export async function POST(request:Request){
     try{
+        const auth = await requireAuth(request, "school.manage");
+        if (!auth.ok) return auth.response;
+
         const body = await request.json()
 
         if(!Array.isArray(body)){
@@ -63,6 +70,9 @@ export async function POST(request:Request){
 
 export async function PATCH(request:Request){
     try{
+        const auth = await requireAuth(request, "school.manage");
+        if (!auth.ok) return auth.response;
+
         const body = await request.json()
        
          if(!Array.isArray(body)){
@@ -102,7 +112,10 @@ export async function PATCH(request:Request){
 
 export async function DELETE(request:Request,{ params }:Params){
     try{
-        const { school_id } = await params;
+        const { school_id: requested } = await params;
+        const auth = await guardSchool(request, "school.manage", requested);
+        if (!auth.ok) return auth.response;
+        const school_id = auth.school_id;
         const {searchParams} = new URL(request.url)
         const raw = searchParams.get("payment_method_id")
 

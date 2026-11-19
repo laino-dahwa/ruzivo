@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { guardSchool } from "../../../../../lib/auth/guard";
 import {
     LOGO_SIZES,
     LogoError,
@@ -25,7 +26,10 @@ type Params = {
  */
 export async function GET(request: Request, { params }: Params) {
     try {
-        const { school_id } = await params;
+        const { school_id: requested } = await params;
+        const auth = await guardSchool(request, "reference.read", requested);
+        if (!auth.ok) return auth.response;
+        const school_id = auth.school_id;
         const { searchParams } = new URL(request.url);
 
         // A cheap existence check for the shell and the favicon, which need to
@@ -83,7 +87,10 @@ type UploadBody = {
  */
 export async function POST(request: Request, { params }: Params) {
     try {
-        const { school_id } = await params;
+        const { school_id: requested } = await params;
+        const auth = await guardSchool(request, "school.manage", requested);
+        if (!auth.ok) return auth.response;
+        const school_id = auth.school_id;
         const body = (await request.json()) as UploadBody;
 
         if (typeof body.original !== "string" || !Array.isArray(body.renditions)) {
@@ -124,7 +131,10 @@ export async function POST(request: Request, { params }: Params) {
 
 export async function DELETE(request: Request, { params }: Params) {
     try {
-        const { school_id } = await params;
+        const { school_id: requested } = await params;
+        const auth = await guardSchool(request, "school.manage", requested);
+        if (!auth.ok) return auth.response;
+        const school_id = auth.school_id;
         const removed = await deleteSchoolLogo(school_id);
         if (!removed) {
             return NextResponse.json({ error: "This school has no logo." }, { status: 404 });

@@ -4,6 +4,7 @@ import { URLSearchParams } from "url";
 import { isPdfFormat } from "../../../../lib/reportRequest";
 import { tablePdfResponse } from "../../../../lib/pdf/tablePdfResponse";
 import { formatCurrency } from "../../../../lib/currency";
+import { guardSchool } from "../../../../lib/auth/guard";
 
 export const runtime = "nodejs";
 
@@ -20,10 +21,13 @@ export async function GET(request:Request) {
         
         const {searchParams} = new URL(request.url)
 
-        const  school_id = getOptionalParam(searchParams,"school_id")
-        if (!school_id) {
+        const  requested = getOptionalParam(searchParams,"school_id")
+        if (!requested) {
             return NextResponse.json({ error: "school_id is required" }, { status: 400 })
         }
+        const auth = await guardSchool(request, "balance.read", requested)
+        if (!auth.ok) return auth.response
+        const school_id = auth.school_id
 
         const  learner_id  =getOptionalParam(searchParams,"learner_id");
         const  class_name = getOptionalParam(searchParams,"class_name")

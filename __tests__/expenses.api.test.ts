@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { signInForTests, signedRequest } from "./helpers/session";
 import { GET, POST, DELETE } from "../app/api/schools/[school_id]/expenses/route";
 import { createSchool } from "../repositories/school/create/createSchool";
 import { createExpenseCategory } from "../repositories/school/create/createExpenseCategory";
@@ -18,7 +19,7 @@ function makeParams(school_id: string) {
 }
 
 function makeRequest(url: string, init?: RequestInit) {
-  return new Request(url, init);
+  return signedRequest(url, init);
 }
 
 async function readJson(response: Response) {
@@ -30,6 +31,7 @@ beforeAll(async () => {
     { school_id: SCHOOL_A, school_name: "Test School A", school_type: "primary", school_address: "n/a", school_contact: "n/a", school_email: "a@test.local" },
     { school_id: SCHOOL_B, school_name: "Test School B", school_type: "primary", school_address: "n/a", school_contact: "n/a", school_email: "b@test.local" },
   ]);
+  await signInForTests(SCHOOL_A);
 
   const [catA] = await createExpenseCategory([{ school_id: SCHOOL_A, expense_name: "Test Category A" }]);
   const [catB] = await createExpenseCategory([{ school_id: SCHOOL_B, expense_name: "Test Category B" }]);

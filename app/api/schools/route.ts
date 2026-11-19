@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireAuth } from "../../../lib/auth/guard";
 //import {getschool} from "../../../../repositories/school/read/getSchool"
 import {createSchool} from "../../../repositories/school/create/createSchool"
 import {deleteSchool} from "../../../repositories/school/delete/deteleSchool"
@@ -9,6 +10,9 @@ export const runtime = "nodejs";
 
 export async function POST(request:Request){
     try{
+        const auth = await requireAuth(request, "school.create");
+        if (!auth.ok) return auth.response;
+
         const body = await request.json()
 
         if(!Array.isArray(body)){
@@ -51,6 +55,9 @@ export async function POST(request:Request){
 
 export async function DELETE(request:Request){
     try{
+        const auth = await requireAuth(request, "school.delete");
+        if (!auth.ok) return auth.response;
+
         const {searchParams} = new URL(request.url)
        
 

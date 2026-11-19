@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { guardSchool, requireAuth } from "../../../../../lib/auth/guard";
 import { getRoles } from "../../../../../repositories/school/read/getRoles";
 import { createRole } from "@/repositories/school/create/createRole";
 import { updateRole } from "@/repositories/school/update/updateRole";
@@ -15,7 +16,10 @@ type Params = {
 export async function GET(request: Request, { params }: Params) {
 
     try {
-        const { school_id } = await params;
+        const { school_id: requested } = await params;
+        const auth = await guardSchool(request, "reference.read", requested);
+        if (!auth.ok) return auth.response;
+        const school_id = auth.school_id;
         const response = await getRoles(school_id)
 
         return NextResponse.json(response)
@@ -38,6 +42,9 @@ export async function GET(request: Request, { params }: Params) {
 
 export async function POST(request: Request) {
     try {
+        const auth = await requireAuth(request, "user.manage");
+        if (!auth.ok) return auth.response;
+
         const body = await request.json()
 
         if (!Array.isArray(body)) {
@@ -78,6 +85,9 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
     try {
+        const auth = await requireAuth(request, "user.manage");
+        if (!auth.ok) return auth.response;
+
         const body = await request.json()
 
         if (!Array.isArray(body)) {
@@ -117,7 +127,10 @@ export async function PATCH(request: Request) {
 
 export async function DELETE(request: Request, { params }: Params) {
     try {
-        const { school_id } = await params;
+        const { school_id: requested } = await params;
+        const auth = await guardSchool(request, "user.manage", requested);
+        if (!auth.ok) return auth.response;
+        const school_id = auth.school_id;
         const { searchParams } = new URL(request.url)
         const raw = searchParams.get("role_id")
 

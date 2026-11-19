@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { signInForTests, signedRequest } from "./helpers/session";
 import { GET, POST, DELETE } from "../app/api/schools/[school_id]/logo/route";
 import { createSchool } from "../repositories/school/create/createSchool";
 import { buildIco, isPng, pngDimensions } from "../lib/images/ico";
@@ -62,6 +63,7 @@ function params(school_id: string) {
 
 beforeAll(async () => {
   await createSchool([{ school_id: SCHOOL, school_name: "Logo Test School", school_type: "primary", school_address: "n/a", school_contact: "n/a", school_email: "logo@test.local" }]);
+  await signInForTests(SCHOOL);
 });
 
 afterAll(async () => {
@@ -111,7 +113,7 @@ describe("ICO encoding", () => {
 describe("school logo endpoint", () => {
   it("stores an uploaded logo and serves it back, as PNG and as an icon", async () => {
     const upload = await POST(
-      new Request("http://localhost/api/schools/TLG/logo", {
+      signedRequest("http://localhost/api/schools/TLG/logo", {
         method: "POST",
         body: JSON.stringify({
           original: `data:image/png;base64,${LOGO_PNG.toString("base64")}`,
@@ -125,12 +127,12 @@ describe("school logo endpoint", () => {
     );
     expect(upload.status).toBe(201);
 
-    const png = await GET(new Request("http://localhost/api/schools/TLG/logo"), params(SCHOOL));
+    const png = await GET(signedRequest("http://localhost/api/schools/TLG/logo"), params(SCHOOL));
     expect(png.status).toBe(200);
     expect(png.headers.get("Content-Type")).toBe("image/png");
     expect(Buffer.from(await png.arrayBuffer()).equals(LOGO_PNG)).toBe(true);
 
-    const ico = await GET(new Request("http://localhost/api/schools/TLG/logo?format=ico"), params(SCHOOL));
+    const ico = await GET(signedRequest("http://localhost/api/schools/TLG/logo?format=ico"), params(SCHOOL));
     expect(ico.status).toBe(200);
     expect(ico.headers.get("Content-Type")).toBe("image/x-icon");
     const icoBytes = Buffer.from(await ico.arrayBuffer());
@@ -138,19 +140,19 @@ describe("school logo endpoint", () => {
   });
 
   it("reports whether a logo exists without shipping the image", async () => {
-    const meta = await GET(new Request("http://localhost/api/schools/TLG/logo?meta=1"), params(SCHOOL));
+    const meta = await GET(signedRequest("http://localhost/api/schools/TLG/logo?meta=1"), params(SCHOOL));
     const body = await meta.json();
     expect(body.hasLogo).toBe(true);
     expect(typeof body.stamp).toBe("string");
   });
 
   it("serves 304 when the caller already has the current logo", async () => {
-    const first = await GET(new Request("http://localhost/api/schools/TLG/logo"), params(SCHOOL));
+    const first = await GET(signedRequest("http://localhost/api/schools/TLG/logo"), params(SCHOOL));
     const etag = first.headers.get("ETag")!;
     expect(etag).toBeTruthy();
 
     const second = await GET(
-      new Request("http://localhost/api/schools/TLG/logo", { headers: { "if-none-match": etag } }),
+      signedRequest("http://localhost/api/schools/TLG/logo", { headers: { "if-none-match": etag } }),
       params(SCHOOL),
     );
     expect(second.status).toBe(304);
@@ -158,7 +160,7 @@ describe("school logo endpoint", () => {
 
   it("replaces the renditions rather than leaving the previous logo's behind", async () => {
     await POST(
-      new Request("http://localhost/api/schools/TLG/logo", {
+      signedRequest("http://localhost/api/schools/TLG/logo", {
         method: "POST",
         body: JSON.stringify({
           original: LOGO_PNG.toString("base64"),
@@ -174,7 +176,7 @@ describe("school logo endpoint", () => {
 
   it("rejects an upload that is not a PNG", async () => {
     const response = await POST(
-      new Request("http://localhost/api/schools/TLG/logo", {
+      signedRequest("http://localhost/api/schools/TLG/logo", {
         method: "POST",
         body: JSON.stringify({
           original: Buffer.from("this is not an image").toString("base64"),
@@ -188,18 +190,18 @@ describe("school logo endpoint", () => {
   });
 
   it("rejects a size that is not one of the icon sizes", async () => {
-    const response = await GET(new Request("http://localhost/api/schools/TLG/logo?size=999"), params(SCHOOL));
+    const response = await GET(signedRequest("http://localhost/api/schools/TLG/logo?size=999"), params(SCHOOL));
     expect(response.status).toBe(400);
   });
 
   it("removes the logo, and says so when there is nothing to remove", async () => {
-    const removed = await DELETE(new Request("http://localhost/api/schools/TLG/logo", { method: "DELETE" }), params(SCHOOL));
+    const removed = await DELETE(signedRequest("http://localhost/api/schools/TLG/logo", { method: "DELETE" }), params(SCHOOL));
     expect(removed.status).toBe(200);
 
-    const again = await DELETE(new Request("http://localhost/api/schools/TLG/logo", { method: "DELETE" }), params(SCHOOL));
+    const again = await DELETE(signedRequest("http://localhost/api/schools/TLG/logo", { method: "DELETE" }), params(SCHOOL));
     expect(again.status).toBe(404);
 
-    const meta = await GET(new Request("http://localhost/api/schools/TLG/logo?meta=1"), params(SCHOOL));
+    const meta = await GET(signedRequest("http://localhost/api/schools/TLG/logo?meta=1"), params(SCHOOL));
     expect((await meta.json()).hasLogo).toBe(false);
 
     // The renditions must go with it rather than being orphaned.

@@ -71,6 +71,42 @@ export async function requireSession(request: Request): Promise<GuardResult> {
   return { ok: true, actor, token };
 }
 
+export type SchoolGuardResult =
+  | { ok: true; actor: Actor; token: string; school_id: string }
+  | { ok: false; response: NextResponse };
+
+/**
+ * requireAuth + resolveSchoolScope in one call, for the routes that act on
+ * one school (named in the path or the query string, or null for the
+ * session's own):
+ *
+ * ```ts
+ * const auth = await guardSchool(request, "expense.read", school_id);
+ * if (!auth.ok) return auth.response;
+ * await getExpenses(auth.school_id, ...);
+ * ```
+ */
+export async function guardSchool(request: Request, capability: Capability, requested: string | null): Promise<SchoolGuardResult> {
+  const auth = await requireAuth(request, capability);
+  if (!auth.ok) return auth;
+  const scope = resolveSchoolScope(auth.actor, requested);
+  if (!scope.ok) return scope;
+  return { ...auth, school_id: scope.school_id };
+}
+
+/**
+ * For writes whose rows name their own school (a learner being added, the
+ * learners a payment is for): refuses unless the actor may act on every one
+ * of those schools. Returns the refusal, or null when all are allowed.
+ */
+export function refuseOtherSchools(actor: Actor, schoolIds: (string | null | undefined)[]): NextResponse | null {
+  for (const id of new Set(schoolIds.map((s) => (s ?? "").trim()))) {
+    const scope = resolveSchoolScope(actor, id || null);
+    if (!scope.ok) return scope.response;
+  }
+  return null;
+}
+
 /**
  * Resolves which school a request is allowed to act on.
  *
@@ -79,14 +115,20 @@ export async function requireSession(request: Request): Promise<GuardResult> {
  * school, and anyone else is confined to the school their session is on.
  * Passing `null` means "use the session's school", which is what most routes
  * should do.
+ *
+ * School ids are CHAR(4), so a three-letter id comes back from the session
+ * padded ("SSV ") while the URL says "SSV". They are compared, and returned,
+ * without the padding.
  */
 export function resolveSchoolScope(actor: Actor, requested: string | null): { ok: true; school_id: string } | { ok: false; response: NextResponse } {
-  if (!requested || requested === actor.active_school_id) {
-    return { ok: true, school_id: actor.active_school_id };
+  const own = actor.active_school_id.trim();
+  const asked = requested?.trim() ?? "";
+  if (!asked || asked === own) {
+    return { ok: true, school_id: own };
   }
 
   if (actor.access_level === "ADMIN") {
-    return { ok: true, school_id: requested };
+    return { ok: true, school_id: asked };
   }
 
   // Deliberately the same message as any other refusal: whether the school

@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { signInForTests, signedRequest } from "./helpers/session";
 import { PATCH as PATCH_GENDER, DELETE as DELETE_GENDER, GET as GET_GENDER } from "../app/api/schools/[school_id]/gender/route";
 import { DELETE as DELETE_EXPENSE_CATEGORY } from "../app/api/schools/[school_id]/expense_categories/route";
 import { GET as GET_INCOME, POST as POST_INCOME, PATCH as PATCH_INCOME, DELETE as DELETE_INCOME } from "../app/api/schools/[school_id]/income_categories/route";
@@ -42,11 +43,11 @@ function makeParams(school_id: string) {
 }
 
 function patchRequest(body: unknown) {
-  return new Request("http://localhost/api/schools/x/y", { method: "PATCH", body: JSON.stringify(body) });
+  return signedRequest("http://localhost/api/schools/x/y", { method: "PATCH", body: JSON.stringify(body) });
 }
 
 function deleteRequest(url: string) {
-  return new Request(url, { method: "DELETE" });
+  return signedRequest(url, { method: "DELETE" });
 }
 
 async function readJson(response: Response) {
@@ -58,6 +59,7 @@ beforeAll(async () => {
     { school_id: SCHOOL, school_name: "Ref Data", school_type: "primary", school_address: "n/a", school_contact: "n/a", school_email: "rd@test.local" },
     { school_id: OTHER_SCHOOL, school_name: "Other", school_type: "primary", school_address: "n/a", school_contact: "n/a", school_email: "ot@test.local" },
   ]);
+  await signInForTests(SCHOOL);
 
   const genders = await createGender([
     { school_id: SCHOOL, gender_name: "Male" },
@@ -120,7 +122,7 @@ describe("renaming reference rows", () => {
     const response = await PATCH_GENDER(patchRequest([{ school_id: SCHOOL, gender_id: maleId, gender_name: "Boy" }]));
     expect(response.status).toBe(201);
 
-    const rows = await readJson(await GET_GENDER(new Request("http://localhost/x"), makeParams(SCHOOL)));
+    const rows = await readJson(await GET_GENDER(signedRequest("http://localhost/x"), makeParams(SCHOOL)));
     const byId = Object.fromEntries(rows.map((r: { gender_id: string; gender_name: string }) => [String(r.gender_id), r.gender_name]));
 
     expect(byId[String(maleId)]).toBe("Boy");
@@ -237,7 +239,7 @@ describe("deleting reference rows", () => {
 
 describe("income category applicability", () => {
   it("defaults new categories to MANDATORY/ALL_LEARNERS/ALL_PERIODS", async () => {
-    const response = await POST_INCOME(new Request("http://localhost/x", {
+    const response = await POST_INCOME(signedRequest("http://localhost/x", {
       method: "POST",
       body: JSON.stringify([{ school_id: SCHOOL, income_name: "Plain Fee", income_limit: "100" }]),
     }));
@@ -249,7 +251,7 @@ describe("income category applicability", () => {
   });
 
   it("creates a category scoped to specific classes and periods, and round-trips membership through GET", async () => {
-    const response = await POST_INCOME(new Request("http://localhost/x", {
+    const response = await POST_INCOME(signedRequest("http://localhost/x", {
       method: "POST",
       body: JSON.stringify([{
         school_id: SCHOOL,
@@ -266,7 +268,7 @@ describe("income category applicability", () => {
     const [created] = await readJson(response);
     expect(created.priority).toBe("OPTIONAL");
 
-    const rows = await readJson(await GET_INCOME(new Request("http://localhost/x"), makeParams(SCHOOL)));
+    const rows = await readJson(await GET_INCOME(signedRequest("http://localhost/x"), makeParams(SCHOOL)));
     const row = rows.find((r: { income_category_id: number }) => r.income_category_id === created.income_category_id);
     // Scalar bigint columns come back from pg as strings, but array_agg(bigint)
     // comes back as an array of numbers — Number() on both sides avoids that
@@ -283,7 +285,7 @@ describe("income category applicability", () => {
     }]));
     expect(updateResponse.status).toBe(201);
 
-    const afterUpdate = await readJson(await GET_INCOME(new Request("http://localhost/x"), makeParams(SCHOOL)));
+    const afterUpdate = await readJson(await GET_INCOME(signedRequest("http://localhost/x"), makeParams(SCHOOL)));
     const updatedRow = afterUpdate.find((r: { income_category_id: number }) => r.income_category_id === created.income_category_id);
     expect(updatedRow.class_category_ids.map(Number)).toEqual([Number(secondClassId)]);
     expect(updatedRow.payment_period_ids).toEqual([]);

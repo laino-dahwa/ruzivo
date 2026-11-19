@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { signInForTests, signedRequest } from "./helpers/session";
 import { GET as getPaymentsReportRoute } from "../app/api/schools/[school_id]/reports/payments/route";
 import { GET as getOwingReportRoute } from "../app/api/schools/[school_id]/reports/owing/route";
 import { GET as getExpensesReportRoute } from "../app/api/schools/[school_id]/reports/expenses/route";
@@ -34,8 +35,8 @@ function makeParams(school_id: string) {
     return { params: Promise.resolve({ school_id }) };
 }
 
-function makeRequest(url: string) {
-    return new Request(url);
+function makeRequest(url: string, init?: RequestInit) {
+    return signedRequest(url, init);
 }
 
 async function readJson(response: Response) {
@@ -87,7 +88,7 @@ async function addLearnerWithEnrolment(fixture: SchoolFixture, firstName: string
         class_category_id: fixture.classCategoryId,
         academic_year_id: fixture.academicYearId,
     }]);
-    const [learner] = await getLearners(prepared.learner_id, null, null, null);
+    const [learner] = await getLearners(null, prepared.learner_id, null, null, null);
     return { learner_id: prepared.learner_id as string, enrolment_id: learner.enrolment_id as number };
 }
 
@@ -112,6 +113,7 @@ let school2: SchoolFixture;
 
 beforeAll(async () => {
     school1 = await buildSchoolFixture(SCHOOL_1, 500);
+    await signInForTests(SCHOOL_1);
     school2 = await buildSchoolFixture(SCHOOL_2, 100);
     await createSchool([{ school_id: SCHOOL_EMPTY, school_name: "Report Test Empty", school_type: "primary", school_address: "n/a", school_contact: "n/a", school_email: "empty@test.local" }]);
 

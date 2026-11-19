@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { guardSchool } from "../../../../../lib/auth/guard";
 import { getSchoolExportData } from "@/repositories/school/export/getSchoolExportData";
 import { buildWorkbook } from "../../../../../lib/excel/workbook";
 
@@ -11,7 +12,10 @@ type Params = {
 /** Every table the app holds for this school, as one .xlsx with one sheet per table. */
 export async function GET(request: Request, { params }: Params) {
   try {
-    const { school_id } = await params;
+    const { school_id: requested } = await params;
+    const auth = await guardSchool(request, "school.manage", requested);
+    if (!auth.ok) return auth.response;
+    const school_id = auth.school_id;
     const sheets = await getSchoolExportData(school_id);
     const workbook = await buildWorkbook(sheets);
 

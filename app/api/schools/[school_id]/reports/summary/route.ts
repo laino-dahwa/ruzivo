@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { guardSchool } from "../../../../../../lib/auth/guard";
 import { getReportSummary } from "../../../../../../repositories/report/getReportSummary";
 import { parseReportDate, parseReportScope } from "../../../../../../lib/reportRequest";
 
@@ -10,7 +11,10 @@ type Params = {
 
 export async function GET(request: Request, { params }: Params) {
     try {
-        const { school_id } = await params;
+        const { school_id: requested } = await params;
+        const auth = await guardSchool(request, "report.read", requested);
+        if (!auth.ok) return auth.response;
+        const school_id = auth.school_id;
         const { searchParams } = new URL(request.url);
 
         const { error } = parseReportDate(searchParams);

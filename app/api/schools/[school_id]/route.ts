@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { guardSchool, requireAuth } from "../../../../lib/auth/guard";
 import {getschool} from "../../../../repositories/school/read/getSchool"
 import {createSchool} from "../../../../repositories/school/create/createSchool"
 import {updateSchool} from "../../../../repositories/school/update/updateSchool"
@@ -12,7 +13,13 @@ type Params={
 
 export async function GET(request:Request,{ params }:Params) {
 
-    const { school_id } = await params;
+    const { school_id: requested } = await params;
+
+    const auth = await guardSchool(request, "reference.read", requested);
+
+    if (!auth.ok) return auth.response;
+
+    const school_id = auth.school_id;
     const response = await getschool(school_id)
 
     return NextResponse.json(response)
@@ -21,6 +28,9 @@ export async function GET(request:Request,{ params }:Params) {
 
 export async function POST(request:Request){
     try{
+        const auth = await requireAuth(request, "school.create");
+        if (!auth.ok) return auth.response;
+
         const body = await request.json()
 
         if(!Array.isArray(body)){
@@ -61,6 +71,9 @@ export async function POST(request:Request){
 
 export async function PATCH(request:Request){
     try{
+        const auth = await requireAuth(request, "school.manage");
+        if (!auth.ok) return auth.response;
+
         const body = await request.json()
        
          if(!Array.isArray(body)){

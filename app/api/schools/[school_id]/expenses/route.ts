@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { guardSchool, refuseOtherSchools, requireAuth } from "../../../../../lib/auth/guard";
+import { query } from "../../../../../lib/db";
 import {getExpense, getExpensePage} from "../../../../../repositories/school/read/getExpense"
 import { parseLimit } from "../../../../../lib/pagination"
 import { createExpense } from "@/repositories/school/create/createExpense";
@@ -19,7 +21,10 @@ type Params= {
 }
 
 export async function GET(request:Request,{ params }:Params) {
-    const { school_id } = await params;
+    const { school_id: requested } = await params;
+    const auth = await guardSchool(request, "expense.read", requested);
+    if (!auth.ok) return auth.response;
+    const school_id = auth.school_id;
     const { searchParams } = new URL(request.url)
 
     // `?limit=` asks for one page plus totals (the Expenses page); without
@@ -71,6 +76,9 @@ export async function GET(request:Request,{ params }:Params) {
 
 export async function POST(request:Request){
     try{
+        const auth = await requireAuth(request, "expense.create");
+        if (!auth.ok) return auth.response;
+
         const body = await request.json()
 
         // Accepts a single expense object or an array of them.
@@ -100,6 +108,13 @@ export async function POST(request:Request){
             )
         }
 
+        // An expense reaches its school through its category; a cashier may
+        // only record against their own school's categories.
+        const categoryIds = records.map((record) => Number((record as Record<string, unknown>).expense_category_id))
+        const categories = await query(`SELECT school_id FROM expense_categories WHERE expense_category_id = ANY($1::bigint[])`, [categoryIds])
+        const refused = refuseOtherSchools(auth.actor, categories.rows.map((row) => String(row.school_id)))
+        if (refused) return refused
+
         const schools = await createExpense(records as unknown as Parameters<typeof createExpense>[0])
 
         return NextResponse.json(
@@ -127,7 +142,10 @@ export async function POST(request:Request){
 
 export async function DELETE(request:Request,{ params }:Params){
     try{
-        const { school_id } = await params;
+        const { school_id: requested } = await params;
+        const auth = await guardSchool(request, "expense.delete", requested);
+        if (!auth.ok) return auth.response;
+        const school_id = auth.school_id;
         const {searchParams} = new URL(request.url)
 
         const expense = searchParams.get("expense_id")

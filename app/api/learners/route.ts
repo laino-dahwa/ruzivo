@@ -8,6 +8,7 @@ import { normalizeToArray, validationErrorBody } from "../../../lib/validation/b
 import { validateLearners, validateLearnerUpdates } from "../../../lib/validation/entities";
 import { isPdfFormat } from "../../../lib/reportRequest";
 import { tablePdfResponse } from "../../../lib/pdf/tablePdfResponse";
+import { guardSchool, refuseOtherSchools, requireAuth } from "../../../lib/auth/guard";
 
 export const runtime = "nodejs";
 
@@ -24,11 +25,16 @@ export async function GET(request:Request) {
         
         const {searchParams} = new URL(request.url)
 
+        // One school's learners: the session's, or (for an administrator)
+        // the one asked for with ?school_id=.
+        const auth = await guardSchool(request, "learner.read", getOptionalParam(searchParams, "school_id"))
+        if (!auth.ok) return auth.response
+
         const  learner_id  =getOptionalParam(searchParams,"learner_id");
         const  class_name = getOptionalParam(searchParams,"class_name")
         const  gender_name = getOptionalParam(searchParams,"gender_name")
         const  academic_year = getOptionalParam(searchParams,"academic_year")
-        const response = await getLearners(learner_id,class_name,gender_name,academic_year)
+        const response = await getLearners(auth.school_id,learner_id,class_name,gender_name,academic_year)
 
         // Exports exactly the rows the filters above produced, matching how
         // the Reports section exports what the user is currently viewing.
@@ -75,6 +81,9 @@ export async function GET(request:Request) {
 
 export async function POST(request:Request){
     try{
+        const auth = await requireAuth(request, "learner.create")
+        if (!auth.ok) return auth.response
+
         const body = await request.json()
 
         // Accepts a single learner object or an array of them.
@@ -104,6 +113,10 @@ export async function POST(request:Request){
             )
         }
 
+        // Each learner names its school; a cashier may only add to their own.
+        const refused = refuseOtherSchools(auth.actor, records.map((record) => String((record as Record<string, unknown>).school_id ?? "")))
+        if (refused) return refused
+
         const schools = await createLearners(records as unknown as Parameters<typeof createLearners>[0])
 
         return NextResponse.json(
@@ -131,6 +144,9 @@ export async function POST(request:Request){
 
 export async function PATCH(request:Request){
     try{
+        const auth = await requireAuth(request, "learner.update")
+        if (!auth.ok) return auth.response
+
         const body = await request.json()
 
         // Accepts a single learner object or an array of them, matching POST.
@@ -193,6 +209,9 @@ export async function PATCH(request:Request){
 
 export async function DELETE(request:Request){
     try{
+        const auth = await requireAuth(request, "learner.delete")
+        if (!auth.ok) return auth.response
+
         const {searchParams} = new URL(request.url)
 
         const learner_id = searchParams.get("learner_id")

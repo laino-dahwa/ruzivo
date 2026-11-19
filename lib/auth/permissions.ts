@@ -55,6 +55,9 @@ export const CAPABILITIES = {
 
   "expense.read": ["ADMIN", "CASHIER"],
   "expense.create": ["ADMIN", "CASHIER"],
+  // Matches what the Expenses page has always offered a cashier. Unlike
+  // payment.delete, which is administrator-only.
+  "expense.delete": ["ADMIN", "CASHIER"],
 
   "report.read": ["ADMIN"],
   "user.manage": ["ADMIN"],

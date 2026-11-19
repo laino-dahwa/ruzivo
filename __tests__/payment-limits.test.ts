@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { signInForTests, signedRequest } from "./helpers/session";
 import { POST } from "../app/api/learners/payments/route";
 import { createSchool } from "../repositories/school/create/createSchool";
 import { createGender } from "../repositories/school/create/createGenderCategory";
@@ -34,7 +35,7 @@ let yearId: number;
 let methodId: number;
 
 function makeRequest(body: unknown) {
-  return new Request("http://localhost/api/learners/payments", {
+  return signedRequest("http://localhost/api/learners/payments", {
     method: "POST",
     body: JSON.stringify(body),
   });
@@ -71,6 +72,7 @@ async function totalPaid(options: { learner?: string; income?: number; period?: 
 
 beforeAll(async () => {
   await createSchool([{ school_id: SCHOOL, school_name: "Limit Test", school_type: "primary", school_address: "n/a", school_contact: "n/a", school_email: "limit@test.local" }]);
+  await signInForTests(SCHOOL);
   const [gender] = await createGender([{ school_id: SCHOOL, gender_name: "Male" }]);
   const [classCategory] = await createClassCategory([{ school_id: SCHOOL, class_name: "Grade 1" }]);
   const [year] = await createAcademicYear([{ school_id: SCHOOL, academic_year_name: "2026", start_date: "2026-01-01", end_date: "2026-12-31" }]);
@@ -97,9 +99,9 @@ beforeAll(async () => {
   learnerId = created[0].learner_id;
   otherLearnerId = created[1].learner_id;
   archivedLearnerId = created[2].learner_id;
-  enrolmentId = (await getLearners(learnerId, null, null, null))[0].enrolment_id;
-  otherEnrolmentId = (await getLearners(otherLearnerId, null, null, null))[0].enrolment_id;
-  archivedEnrolmentId = (await getLearners(archivedLearnerId, null, null, null))[0].enrolment_id;
+  enrolmentId = (await getLearners(null, learnerId, null, null, null))[0].enrolment_id;
+  otherEnrolmentId = (await getLearners(null, otherLearnerId, null, null, null))[0].enrolment_id;
+  archivedEnrolmentId = (await getLearners(null, archivedLearnerId, null, null, null))[0].enrolment_id;
   await deleteLearner(archivedLearnerId);
 });
 
@@ -417,7 +419,7 @@ describe("once-off income categories", () => {
 
   it("can be created without choosing a period", async () => {
     const { POST: POST_INCOME } = await import("../app/api/schools/[school_id]/income_categories/route");
-    const response = await POST_INCOME(new Request(`http://localhost/api/schools/${SCHOOL}/income_categories`, {
+    const response = await POST_INCOME(signedRequest(`http://localhost/api/schools/${SCHOOL}/income_categories`, {
       method: "POST",
       body: JSON.stringify([{ school_id: SCHOOL, income_name: "No Period Fee", income_limit: "10", priority: "ONCE_OFF", payment_period_ids: [] }]),
     }));

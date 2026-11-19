@@ -1,6 +1,7 @@
 import { query } from "../../../lib/db";
 
-export async function getLearners(learner_id:string|null,class_name:string|null,gender_name:string|null,academic_year:string|null) {
+/** One school's active learners, one row per enrolment. `school_id` null means every school (scripts and tests only; the API always passes one). */
+export async function getLearners(school_id:string|null,learner_id:string|null,class_name:string|null,gender_name:string|null,academic_year:string|null) {
     const result = await query(`
         SELECT l.learner_id, l.first_name, l.last_name, l.email,
                l.gender_id::int AS gender_id, g.gender_name,
@@ -31,8 +32,10 @@ export async function getLearners(learner_id:string|null,class_name:string|null,
         ($3::text IS NULL OR g.gender_name= $3::text)
          AND
         ($4::text IS NULL OR ay.academic_year_name= $4::text)
+         AND
+        ($5::text IS NULL OR l.school_id = $5::text)
         `,
-        [learner_id,class_name, gender_name, academic_year]
+        [learner_id,class_name, gender_name, academic_year, school_id]
     );
     return result.rows;
 }

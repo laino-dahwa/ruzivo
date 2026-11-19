@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { signInForTests, signedRequest } from "./helpers/session";
 import { GET, POST, DELETE } from "../app/api/learners/payments/route";
 import { createSchool } from "../repositories/school/create/createSchool";
 import { createGender } from "../repositories/school/create/createGenderCategory";
@@ -29,7 +30,7 @@ let learnerId: string;
 let enrolmentId: number;
 
 function makeRequest(url: string, init?: RequestInit) {
-  return new Request(url, init);
+  return signedRequest(url, init);
 }
 
 async function readJson(response: Response) {
@@ -38,6 +39,7 @@ async function readJson(response: Response) {
 
 beforeAll(async () => {
   await createSchool([{ school_id: SCHOOL, school_name: "Test Payment School", school_type: "primary", school_address: "n/a", school_contact: "n/a", school_email: "pay@test.local" }]);
+  await signInForTests(SCHOOL);
 
   const [gender] = await createGender([{ school_id: SCHOOL, gender_name: "Test Gender P" }]);
   const [classCategory] = await createClassCategory([{ school_id: SCHOOL, class_name: "Test Class P" }]);
@@ -73,11 +75,14 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await query("DELETE FROM payment_allocations WHERE charge_id IN (SELECT charge_id FROM charges WHERE learner_id = $1)", [learnerId]);
+  // Every learner in the test school, not just the one created above, so a
+  // run that stopped partway through cannot leave the school undeletable.
+  const learners = "(SELECT learner_id FROM learners WHERE school_id = $1)";
+  await query(`DELETE FROM payment_allocations WHERE charge_id IN (SELECT charge_id FROM charges WHERE learner_id IN ${learners})`, [SCHOOL]);
   await query("DELETE FROM payments WHERE payment_id NOT IN (SELECT payment_id FROM payment_allocations)");
-  await query("DELETE FROM charges WHERE learner_id = $1", [learnerId]);
-  await query("DELETE FROM enrolments WHERE learner_id = $1", [learnerId]);
-  await query("DELETE FROM learners WHERE learner_id = $1", [learnerId]);
+  await query(`DELETE FROM charges WHERE learner_id IN ${learners}`, [SCHOOL]);
+  await query(`DELETE FROM enrolments WHERE learner_id IN ${learners}`, [SCHOOL]);
+  await query("DELETE FROM learners WHERE school_id = $1", [SCHOOL]);
   await query("DELETE FROM payment_methods WHERE payment_method_id = $1", [paymentMethodId]);
   await query("DELETE FROM payment_periods WHERE payment_period_id = $1", [paymentPeriodId]);
   await query("DELETE FROM income_categories WHERE income_category_id = $1", [incomeCategoryId]);

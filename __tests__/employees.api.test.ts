@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { signInForTests, signedRequest } from "./helpers/session";
 import { GET, POST, DELETE } from "../app/api/schools/[school_id]/employees/route";
 import { createSchool } from "../repositories/school/create/createSchool";
 import { createRole } from "../repositories/school/create/createRole";
@@ -12,7 +13,7 @@ let teacherRoleId: number;
 let bursarRoleId: number;
 
 function makeRequest(url: string, init?: RequestInit) {
-  return new Request(url, init);
+  return signedRequest(url, init);
 }
 
 function makeParams(school_id: string) {
@@ -27,6 +28,7 @@ beforeAll(async () => {
   await createSchool([
     { school_id: SCHOOL_A, school_name: "Test Employee School A", school_type: "primary", school_address: "n/a", school_contact: "n/a", school_email: "ea@test.local" },
   ]);
+  await signInForTests(SCHOOL_A);
   const [teacher] = await createRole([{ school_id: SCHOOL_A, role_name: "Teacher" }]);
   const [bursar] = await createRole([{ school_id: SCHOOL_A, role_name: "Bursar" }]);
   teacherRoleId = teacher.role_id;

@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { signInForTests, signedRequest } from "./helpers/session";
 import { GET, POST, PATCH, DELETE } from "../app/api/learners/route";
 import { createSchool } from "../repositories/school/create/createSchool";
 import { createGender } from "../repositories/school/create/createGenderCategory";
@@ -26,7 +27,7 @@ let classA: number;
 let yearA: number;
 
 function makeRequest(url: string, init?: RequestInit) {
-  return new Request(url, init);
+  return signedRequest(url, init);
 }
 
 async function readJson(response: Response) {
@@ -38,6 +39,7 @@ beforeAll(async () => {
     { school_id: SCHOOL_A, school_name: "Test Learner School A", school_type: "primary", school_address: "n/a", school_contact: "n/a", school_email: "la@test.local" },
     { school_id: SCHOOL_B, school_name: "Test Learner School B", school_type: "primary", school_address: "n/a", school_contact: "n/a", school_email: "lb@test.local" },
   ]);
+  await signInForTests(SCHOOL_A);
 
   const [gender] = await createGender([{ school_id: SCHOOL_A, gender_name: "Test Gender A" }]);
   const [classCategory] = await createClassCategory([{ school_id: SCHOOL_A, class_name: "Test Class A" }]);
