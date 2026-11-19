@@ -20,7 +20,7 @@
       "binding": "DB",
       "database_name": "ruzivo",
       // From `wrangler d1 create ruzivo`.
-      "database_id": "76e48afc-f3e0-4915-92d9-d12d3a3000f7",
+      "database_id": "632e412d-8748-434d-bd70-8846d2a208e0",
       "migrations_dir": "d1/migrations"
     }
   ],
