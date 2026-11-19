@@ -21,6 +21,18 @@ import { registerSyncIpc } from './sync/ipc';
 const isProductionFlow = app.isPackaged || process.env.RUZIVO_FORCE_PRODUCTION === '1';
 const NEXT_SERVER_PORT = 3100;
 
+// A development run must never touch an installed copy's data. Both are
+// named "ruzivo" (package.json), so without this a dev run opens the
+// installed app's %APPDATA%\ruzivo: its database config, its backups and its
+// cloud link (sync-link.json), which would sync the dev database to the
+// school's real website. Packaged builds keep the folder they have always
+// used, so existing installs are untouched. Every userData path in electron/
+// goes through app.getPath('userData'), so this one line covers all of them.
+// Must run before the app is ready (Chromium's profile lives here too).
+if (!app.isPackaged) {
+  app.setPath('userData', path.join(app.getPath('appData'), 'ruzivo-dev'));
+}
+
 let mainWindow: BrowserWindow | null = null;
 let setupWindow: BrowserWindow | null = null;
 let ownsEmbeddedPostgres = false;
